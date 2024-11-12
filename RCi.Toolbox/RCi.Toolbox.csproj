@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	<WarningsAsErrors>Nullable</WarningsAsErrors>
+
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Title>Toolbox package</Title>
     <Authors>Martynas Apanavicius</Authors>
