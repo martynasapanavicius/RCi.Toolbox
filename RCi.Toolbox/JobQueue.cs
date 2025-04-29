@@ -111,9 +111,7 @@ namespace RCi.Toolbox
     }
 
     /// <inheritdoc cref="IJobQueue"/>
-    public interface IJobQueueDisposable :
-        IJobQueue,
-        IDisposable;
+    public interface IJobQueueDisposable : IJobQueue, IDisposable;
 
     /// <summary>
     /// Defines <see cref="IJobQueue"/> parameters.
@@ -134,10 +132,12 @@ namespace RCi.Toolbox
     /// <summary>
     /// <see cref="IJobQueue"/> implementation with dedicated threads as workers.
     /// </summary>
-    public sealed class JobQueue :
-        IJobQueueDisposable
+    public sealed class JobQueue : IJobQueueDisposable
     {
-        private readonly record struct JobQueueItem(Action<CancellationToken> Job, Action<JobResult>? OnComplete);
+        private readonly record struct JobQueueItem(
+            Action<CancellationToken> Job,
+            Action<JobResult>? OnComplete
+        );
 
         private readonly CancellationTokenSource _cts;
         private readonly CancellationToken _ct;
@@ -177,7 +177,11 @@ namespace RCi.Toolbox
 
         public JobQueue(JobQueueParameters parameters)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(parameters.WorkerCount, 1, nameof(parameters.WorkerCount));
+            ArgumentOutOfRangeException.ThrowIfLessThan(
+                parameters.WorkerCount,
+                1,
+                nameof(parameters.WorkerCount)
+            );
 
             _cts = new CancellationTokenSource();
             _ct = _cts.Token;
@@ -211,10 +215,8 @@ namespace RCi.Toolbox
             WaitForIdle();
         }
 
-        public JobQueue() :
-            this(JobQueueParameters.Default)
-        {
-        }
+        public JobQueue()
+            : this(JobQueueParameters.Default) { }
 
         ~JobQueue() => Dispose(false);
 
@@ -321,7 +323,8 @@ namespace RCi.Toolbox
                 }
                 else
                 {
-                    int idleWorkerCountBefore, idleWorkerCountAfter;
+                    int idleWorkerCountBefore,
+                        idleWorkerCountAfter;
                     lock (_lock)
                     {
                         // if no job + disposing (or disposed) => stop worker thread
@@ -384,8 +387,8 @@ namespace RCi.Toolbox
             {
                 // block thread and wait for signal
                 return timeout > TimeSpan.Zero
-                    ? waiter.WaitOne(timeout)   // with timeout
-                    : waiter.WaitOne();         // indefinitely
+                    ? waiter.WaitOne(timeout) // with timeout
+                    : waiter.WaitOne(); // indefinitely
             }
             finally
             {
@@ -465,40 +468,57 @@ namespace RCi.Toolbox
         public bool Post(Action<CancellationToken> job, Action<JobResult> onComplete) =>
             Post(new JobQueueItem(job, onComplete));
 
-        public bool Post(Action<CancellationToken> job) =>
-            Post(new JobQueueItem(job, default));
+        public bool Post(Action<CancellationToken> job) => Post(new JobQueueItem(job, default));
     }
 
     public static class JobQueueExtensions
     {
-        public static bool Post(this IJobQueue jobQueue, Action job, Action<JobResult> onComplete) =>
-            jobQueue.Post(_ => job(), onComplete);
+        public static bool Post(
+            this IJobQueue jobQueue,
+            Action job,
+            Action<JobResult> onComplete
+        ) => jobQueue.Post(_ => job(), onComplete);
 
-        public static bool Post(this IJobQueue jobQueue, Action job) =>
-            jobQueue.Post(_ => job());
+        public static bool Post(this IJobQueue jobQueue, Action job) => jobQueue.Post(_ => job());
 
-        public static bool Post<T>(this IJobQueue jobQueue, Func<CancellationToken, T> job, Action<JobResult<T>> onComplete)
+        public static bool Post<T>(
+            this IJobQueue jobQueue,
+            Func<CancellationToken, T> job,
+            Action<JobResult<T>> onComplete
+        )
         {
             var result = default(T);
-            return jobQueue.Post
-            (
+            return jobQueue.Post(
                 ct => result = job(ct),
-                jobResult => onComplete.Invoke(new JobResult<T>(jobResult.Cancelled, jobResult.Exception, result))
+                jobResult =>
+                    onComplete.Invoke(
+                        new JobResult<T>(jobResult.Cancelled, jobResult.Exception, result)
+                    )
             );
         }
 
-        public static bool Post<T>(this IJobQueue jobQueue, Func<T> job, Action<JobResult<T>> onComplete) =>
-            jobQueue.Post(_ => job(), onComplete);
+        public static bool Post<T>(
+            this IJobQueue jobQueue,
+            Func<T> job,
+            Action<JobResult<T>> onComplete
+        ) => jobQueue.Post(_ => job(), onComplete);
 
-        public static bool Send(this IJobQueue jobQueue, Action<CancellationToken> job, out JobResult result)
+        public static bool Send(
+            this IJobQueue jobQueue,
+            Action<CancellationToken> job,
+            out JobResult result
+        )
         {
             using var waiter = new AutoResetEvent(false);
             var resultOut = default(JobResult);
-            var enqueued = jobQueue.Post(job, r =>
-            {
-                resultOut = r;
-                waiter.Set();
-            });
+            var enqueued = jobQueue.Post(
+                job,
+                r =>
+                {
+                    resultOut = r;
+                    waiter.Set();
+                }
+            );
             if (enqueued)
             {
                 waiter.WaitOne();
@@ -513,16 +533,22 @@ namespace RCi.Toolbox
         public static bool Send(this IJobQueue jobQueue, Action<CancellationToken> job) =>
             jobQueue.Send(job, out _);
 
-        public static bool Send(this IJobQueue jobQueue, Action job) =>
-            jobQueue.Send(job, out _);
+        public static bool Send(this IJobQueue jobQueue, Action job) => jobQueue.Send(job, out _);
 
-        public static bool Send<T>(this IJobQueue jobQueue, Func<CancellationToken, T> job, out JobResult<T> result)
+        public static bool Send<T>(
+            this IJobQueue jobQueue,
+            Func<CancellationToken, T> job,
+            out JobResult<T> result
+        )
         {
             var value = default(T);
-            var enqueued = jobQueue.Send(ct =>
-            {
-                value = job(ct);
-            }, out var resultVanilla);
+            var enqueued = jobQueue.Send(
+                ct =>
+                {
+                    value = job(ct);
+                },
+                out var resultVanilla
+            );
             result = new JobResult<T>(resultVanilla.Cancelled, resultVanilla.Exception, value);
             return enqueued;
         }

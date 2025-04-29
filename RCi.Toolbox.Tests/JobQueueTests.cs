@@ -34,10 +34,7 @@ namespace RCi.Toolbox.Tests
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
             {
-                _ = new JobQueue(new JobQueueParameters
-                {
-                    WorkerCount = 0,
-                });
+                _ = new JobQueue(new JobQueueParameters { WorkerCount = 0 });
             });
         }
 
@@ -46,10 +43,7 @@ namespace RCi.Toolbox.Tests
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
             {
-                _ = new JobQueue(new JobQueueParameters
-                {
-                    WorkerCount = -1,
-                });
+                _ = new JobQueue(new JobQueueParameters { WorkerCount = -1 });
             });
         }
 
@@ -83,21 +77,24 @@ namespace RCi.Toolbox.Tests
             var locker = new object();
             var jobStarted = false;
             var result = default(JobResult);
-            jobQueue.Post(() =>
-            {
-                lock (locker)
+            jobQueue.Post(
+                () =>
                 {
-                    jobStarted = true;
-                }
+                    lock (locker)
+                    {
+                        jobStarted = true;
+                    }
 
-                throw new Exception("test");
-            }, r =>
-            {
-                lock (locker)
+                    throw new Exception("test");
+                },
+                r =>
                 {
-                    result = r;
+                    lock (locker)
+                    {
+                        result = r;
+                    }
                 }
-            });
+            );
             jobQueue.WaitForIdle();
 
             Assert.That(jobStarted, Is.True);
@@ -161,18 +158,21 @@ namespace RCi.Toolbox.Tests
             using var jobStarted = new ManualResetEvent(false);
             using var waitForCancel = new ManualResetEvent(false);
 
-            jobQueue.Post(ct =>
-            {
-                cancellationTokenStates.Enqueue(ct.IsCancellationRequested); // should be false
+            jobQueue.Post(
+                ct =>
+                {
+                    cancellationTokenStates.Enqueue(ct.IsCancellationRequested); // should be false
 
-                // unblock outer thread
-                jobStarted.Set();
+                    // unblock outer thread
+                    jobStarted.Set();
 
-                // block job and wait for signal
-                waitForCancel.WaitOne();
+                    // block job and wait for signal
+                    waitForCancel.WaitOne();
 
-                cancellationTokenStates.Enqueue(ct.IsCancellationRequested); // should be true
-            }, results.Enqueue);
+                    cancellationTokenStates.Enqueue(ct.IsCancellationRequested); // should be true
+                },
+                results.Enqueue
+            );
 
             // wait for thread to start (so we capture cancellation before)
             jobStarted.WaitOne();
@@ -258,10 +258,7 @@ namespace RCi.Toolbox.Tests
         [Test]
         public static void ActiveWorkerCount()
         {
-            using var jobQueue = new JobQueue(new JobQueueParameters
-            {
-                WorkerCount = 2,
-            });
+            using var jobQueue = new JobQueue(new JobQueueParameters { WorkerCount = 2 });
 
             var actual = jobQueue.ActiveWorkerCount;
             Assert.That(actual, Is.EqualTo(0));
@@ -321,7 +318,8 @@ namespace RCi.Toolbox.Tests
 
             using (var jobQueue = new JobQueue())
             {
-                jobQueue.ActiveWorkerCountChanged += (_, count) => queue.Enqueue($"ActiveWorkerCountChanged = {count}");
+                jobQueue.ActiveWorkerCountChanged += (_, count) =>
+                    queue.Enqueue($"ActiveWorkerCountChanged = {count}");
                 jobQueue.Cancelled += (_, _) => queue.Enqueue("Cancelled");
                 jobQueue.Disposing += (_, _) => queue.Enqueue("Disposing");
                 jobQueue.Disposed += (_, _) => queue.Enqueue("Disposed");
@@ -404,11 +402,14 @@ namespace RCi.Toolbox.Tests
         {
             var results = new ConcurrentQueue<JobResult<int>>();
             using var jobQueue = new JobQueue();
-            jobQueue.Post(ct =>
-            {
-                ct.ThrowIfCancellationRequested(); // should not throw
-                return 42;
-            }, results.Enqueue);
+            jobQueue.Post(
+                ct =>
+                {
+                    ct.ThrowIfCancellationRequested(); // should not throw
+                    return 42;
+                },
+                results.Enqueue
+            );
             jobQueue.WaitForIdle();
             Assert.That(results.ToArray().SequenceEqual([new JobResult<int>(false, default, 42)]));
         }

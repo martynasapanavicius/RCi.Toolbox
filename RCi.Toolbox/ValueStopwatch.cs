@@ -13,8 +13,9 @@ namespace RCi.Toolbox
         public static ValueStopwatch StartNew() => new(Stopwatch.GetTimestamp());
 
         /// <see cref="Stopwatch.Elapsed"/>
-        public TimeSpan Elapsed => _startTimestamp == 0L
-            ? throw new InvalidOperationException("uninitialized")
-            : Stopwatch.GetElapsedTime(_startTimestamp, Stopwatch.GetTimestamp());
+        public TimeSpan Elapsed =>
+            _startTimestamp == 0L
+                ? throw new InvalidOperationException("uninitialized")
+                : Stopwatch.GetElapsedTime(_startTimestamp, Stopwatch.GetTimestamp());
     }
 }

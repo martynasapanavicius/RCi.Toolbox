@@ -19,7 +19,10 @@ namespace RCi.Toolbox.Tests
         public static void Elapsed_Uninitialized()
         {
             var sw = default(ValueStopwatch);
-            Assert.Throws<InvalidOperationException>(() => { _ = sw.Elapsed; });
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                _ = sw.Elapsed;
+            });
         }
     }
 }

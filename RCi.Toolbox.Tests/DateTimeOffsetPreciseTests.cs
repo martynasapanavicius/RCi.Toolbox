@@ -18,7 +18,10 @@ namespace RCi.Toolbox.Tests
             var expected = DateTimeOffset.UtcNow;
             var actual = DateTimeOffsetPrecise.UtcNow;
             var diff = actual - expected;
-            Assert.That(diff, Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100)));
+            Assert.That(
+                diff,
+                Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100))
+            );
         }
 
         [Test]
@@ -27,7 +30,10 @@ namespace RCi.Toolbox.Tests
             var expected = DateTimeOffset.Now;
             var actual = DateTimeOffsetPrecise.Now;
             var diff = actual - expected;
-            Assert.That(diff, Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100)));
+            Assert.That(
+                diff,
+                Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100))
+            );
         }
     }
 }

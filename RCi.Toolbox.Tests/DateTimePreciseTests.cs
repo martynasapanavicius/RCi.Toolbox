@@ -20,7 +20,10 @@ namespace RCi.Toolbox.Tests
             Assert.That(actual.Kind, Is.EqualTo(expected.Kind));
             Assert.That(actual.IsDaylightSavingTime(), Is.EqualTo(expected.IsDaylightSavingTime()));
             var diff = actual - expected;
-            Assert.That(diff, Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100)));
+            Assert.That(
+                diff,
+                Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100))
+            );
         }
 
         [Test]
@@ -31,7 +34,10 @@ namespace RCi.Toolbox.Tests
             Assert.That(actual.Kind, Is.EqualTo(expected.Kind));
             Assert.That(actual.IsDaylightSavingTime(), Is.EqualTo(expected.IsDaylightSavingTime()));
             var diff = actual - expected;
-            Assert.That(diff, Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100)));
+            Assert.That(
+                diff,
+                Is.InRange(TimeSpan.FromMilliseconds(-100), TimeSpan.FromMilliseconds(100))
+            );
         }
     }
 }
