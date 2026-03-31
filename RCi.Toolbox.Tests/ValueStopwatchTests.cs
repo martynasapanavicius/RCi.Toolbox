@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace RCi.Toolbox.Tests
 {
-    [Parallelizable]
+    [Parallelizable(ParallelScope.All)]
     public static class ValueStopwatchTests
     {
         [Test]

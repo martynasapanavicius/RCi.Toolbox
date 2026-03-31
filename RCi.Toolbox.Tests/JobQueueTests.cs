@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading;
 
 namespace RCi.Toolbox.Tests
 {
-    [Parallelizable]
+    [Parallelizable(ParallelScope.All)]
     public static class JobQueueTests
     {
         [Test]

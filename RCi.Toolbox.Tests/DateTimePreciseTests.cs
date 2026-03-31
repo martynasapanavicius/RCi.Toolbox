@@ -2,7 +2,7 @@
 
 namespace RCi.Toolbox.Tests
 {
-    [Parallelizable]
+    [Parallelizable(ParallelScope.All)]
     public static class DateTimePreciseTests
     {
         [SetUp]
