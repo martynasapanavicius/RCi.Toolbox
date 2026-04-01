@@ -13,7 +13,7 @@ namespace RCi.Toolbox.Boxes
 
     public static class SyncBoxExtensions
     {
-        extension<T>(ISyncBox<T> box)
+        extension<T>(ISyncBoxReadOnly<T> box)
         {
             public async Task<bool> WaitForAsync(
                 SyncBoxWaitForDelegate<T> isDone,
