@@ -11,7 +11,7 @@ namespace RCi.Toolbox.Boxes
 
     public delegate void SyncBoxReadOnlyAccessLockedDelegate<in T>(Func<T> getter);
 
-    public delegate TResult SyncReadOnlyAccessLockedDelegate<in T, out TResult>(Func<T> getter);
+    public delegate TResult SyncBoxReadOnlyAccessLockedDelegate<in T, out TResult>(Func<T> getter);
 
     public interface ISyncBoxReadOnly<out T>
     {
@@ -21,7 +21,7 @@ namespace RCi.Toolbox.Boxes
 
         void AccessLocked(SyncBoxReadOnlyAccessLockedDelegate<T> action);
 
-        TResult AccessLocked<TResult>(SyncReadOnlyAccessLockedDelegate<T, TResult> action);
+        TResult AccessLocked<TResult>(SyncBoxReadOnlyAccessLockedDelegate<T, TResult> action);
     }
 
     public interface ISyncBox<T> : ISyncBoxReadOnly<T>

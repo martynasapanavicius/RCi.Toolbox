@@ -117,7 +117,7 @@ namespace RCi.Toolbox.Boxes
             }
         }
 
-        public TResult AccessLocked<TResult>(SyncReadOnlyAccessLockedDelegate<T, TResult> action)
+        public TResult AccessLocked<TResult>(SyncBoxReadOnlyAccessLockedDelegate<T, TResult> action)
         {
             lock (_lock)
             {
