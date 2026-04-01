@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using RCi.Toolbox.Boxes;
 
 namespace RCi.Toolbox
 {
@@ -60,22 +62,6 @@ namespace RCi.Toolbox
         bool Cancel();
 
         /// <summary>
-        /// Blocks thread and waits (with timeout) for job queue to become idle with
-        /// (returns immediately if job queue is already idle).
-        /// </summary>
-        /// <returns>
-        ///     <see langword="true"/> - waited successfully, or job queue was already idle,
-        ///     <see langword="false"/> - timeout.
-        /// </returns>
-        bool WaitForIdle(TimeSpan timeout);
-
-        /// <summary>
-        /// Blocks thread and waits (indefinitely) for job queue to become idle
-        /// (returns immediately if job queue is already idle).
-        /// </summary>
-        void WaitForIdle();
-
-        /// <summary>
         /// Enqueues the job. Workers will dequeue and execute them.
         /// </summary>
         /// <param name="job">Job to execute (with <see cref="CancellationToken"/> to check whether job queue was cancelled).</param>
@@ -90,9 +76,14 @@ namespace RCi.Toolbox
         bool Post(Action<CancellationToken> job);
 
         /// <summary>
-        /// Active worker count changed.
+        /// Active worker count changed. Events are delivered synchronously.
         /// </summary>
         public event EventHandler<int>? ActiveWorkerCountChanged;
+
+        /// <summary>
+        /// Active worker count changed. Events are delivered asynchronously.
+        /// </summary>
+        public event EventHandler<int>? ActiveWorkerCountChangedDeferred;
 
         /// <summary>
         /// Job queue was cancelled (job queue might be idle or working).
@@ -108,6 +99,42 @@ namespace RCi.Toolbox
         /// Job queue disposed.
         /// </summary>
         public event EventHandler? Disposed;
+
+        /// <summary>
+        /// Blocks thread and waits (with timeout) for job queue to become idle,
+        /// returns immediately if job queue is already idle.
+        /// All negative timeouts are treated as <see cref="Timeout.InfiniteTimeSpan"/>.
+        /// </summary>
+        /// <returns>
+        ///     <see langword="true"/> - waited successfully, or job queue was already idle,
+        ///     <see langword="false"/> - timeout or cancelled.
+        /// </returns>
+        Task<bool> WaitForIdleAsync(
+            TimeSpan timeout,
+            TimeProvider timeProvider,
+            CancellationToken ct
+        );
+
+        /// <inheritdoc cref="WaitForIdleAsync" />
+        bool WaitForIdle(TimeSpan timeout, TimeProvider timeProvider, CancellationToken ct);
+
+        /// <summary>
+        /// Blocks thread and waits (with timeout) for job queue to become busy,
+        /// returns immediately if job queue is already busy.
+        /// All negative timeouts are treated as <see cref="Timeout.InfiniteTimeSpan"/>.
+        /// </summary>
+        /// <returns>
+        ///     <see langword="true"/> - waited successfully, or job queue was already busy,
+        ///     <see langword="false"/> - timeout or cancelled.
+        /// </returns>
+        Task<bool> WaitForBusyAsync(
+            TimeSpan timeout,
+            TimeProvider timeProvider,
+            CancellationToken ct
+        );
+
+        /// <inheritdoc cref="WaitForBusyAsync" />
+        bool WaitForBusy(TimeSpan timeout, TimeProvider timeProvider, CancellationToken ct);
     }
 
     /// <inheritdoc cref="IJobQueue"/>
@@ -139,41 +166,49 @@ namespace RCi.Toolbox
             Action<JobResult>? OnComplete
         );
 
+        public JobQueueParameters Parameters { get; }
         private readonly CancellationTokenSource _cts;
         private readonly CancellationToken _ct;
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
         private bool? _disposed;
         private readonly Queue<JobQueueItem> _jobQueue;
         private readonly Queue<int> _idleWorkerIds;
         private readonly AutoResetEvent[] _synchronizers;
         private readonly Thread[] _workers;
-        private int _idleWorkerCount;
+        private readonly SyncBox<int> _activeWorkerCountBox;
+        private readonly SyncBoxDeferred<int> _activeWorkerCountBoxDeferred;
 
-        public event EventHandler<int>? ActiveWorkerCountChanged;
+        private int _isCancelled; // maintained via interlocked (outside locked context)
+
+        public int WorkerCount => Parameters.WorkerCount;
+        public int ActiveWorkerCount => _activeWorkerCountBox.Value;
+        public bool IsIdle => ActiveWorkerCount == 0;
+        public bool IsWorking => ActiveWorkerCount > 0;
+        public bool IsCancelled => _ct.IsCancellationRequested;
+
+        /// <summary>
+        /// Fired synchronously while holding the internal queue lock.
+        /// WARNING: Do not perform heavy lifting or call queue methods from this handler.
+        /// </summary>
+        public event EventHandler<int>? ActiveWorkerCountChanged
+        {
+            add => _activeWorkerCountBox.ValueChanged += value;
+            remove => _activeWorkerCountBox.ValueChanged -= value;
+        }
+
+        /// <summary>
+        /// Fired asynchronously via a background channel pump.
+        /// Safe for heavy lifting, UI updates, and calling back into the JobQueue.
+        /// </summary>
+        public event EventHandler<int>? ActiveWorkerCountChangedDeferred
+        {
+            add => _activeWorkerCountBoxDeferred.ValueChanged += value;
+            remove => _activeWorkerCountBoxDeferred.ValueChanged -= value;
+        }
+
         public event EventHandler? Cancelled;
         public event EventHandler? Disposing;
         public event EventHandler? Disposed;
-
-        public JobQueueParameters Parameters { get; }
-
-        public int WorkerCount => Parameters.WorkerCount;
-
-        public int ActiveWorkerCount
-        {
-            get
-            {
-                lock (_lock)
-                {
-                    return WorkerCount - _idleWorkerCount;
-                }
-            }
-        }
-
-        public bool IsIdle => ActiveWorkerCount == 0;
-
-        public bool IsWorking => ActiveWorkerCount > 0;
-
-        public bool IsCancelled => _ct.IsCancellationRequested;
 
         public JobQueue(JobQueueParameters parameters)
         {
@@ -193,6 +228,11 @@ namespace RCi.Toolbox
                 _idleWorkerIds = new Queue<int>(parameters.WorkerCount);
                 _synchronizers = new AutoResetEvent[parameters.WorkerCount];
                 _workers = new Thread[parameters.WorkerCount];
+
+                // we always start with active workers because they need to park themselves to the idle queue
+                _activeWorkerCountBox = new SyncBox<int>(parameters.WorkerCount);
+                _activeWorkerCountBoxDeferred = new SyncBoxDeferred<int>(parameters.WorkerCount);
+
                 for (var i = 0; i < parameters.WorkerCount; i++)
                 {
                     // create thread synchronizer
@@ -211,29 +251,24 @@ namespace RCi.Toolbox
                 }
             }
 
-            // wait for workers to warm up and enqueue as idle
-            WaitForIdle();
+            // wait for workers to initialize and enqueue as idle
+            // this should always finish almost instantly
+            // because we're in the constructor and nobody had a chance to enqueue jobs
+            // thus workers would park to idle queue immediately
+            WaitForIdle(Timeout.InfiniteTimeSpan, TimeProvider.System, CancellationToken.None);
         }
 
         public JobQueue()
             : this(JobQueueParameters.Default) { }
 
-        ~JobQueue() => Dispose(false);
-
         public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        private void Dispose(bool _)
         {
             // ensure cancelled, thus we won't enqueue new jobs
             Cancel();
 
             lock (_lock)
             {
-                if (_disposed.HasValue)
+                if (_disposed is not null)
                 {
                     // already disposing (or disposed)
                     return;
@@ -255,8 +290,11 @@ namespace RCi.Toolbox
             // block and wait for all threads to terminate
             foreach (var thread in _workers)
             {
-                thread.Join();
+                thread.Join(); // no timeout, we want all jobs to complete
             }
+
+            // shut down the background channel pump
+            _activeWorkerCountBoxDeferred.Dispose();
 
             lock (_lock)
             {
@@ -265,12 +303,14 @@ namespace RCi.Toolbox
                 {
                     throw new InvalidOperationException("at least one worker thread is alive");
                 }
-                if (_jobQueue.Any())
+                if (_jobQueue.Count != 0)
                 {
                     throw new InvalidOperationException("job queue is not empty");
                 }
                 if (_idleWorkerIds.Count != 0)
                 {
+                    // workers are expected to never add themselves back to the idle queue
+                    // once global job queue is drained and dispose is triggered
                     throw new InvalidOperationException("not all workers are idle");
                 }
 
@@ -295,59 +335,72 @@ namespace RCi.Toolbox
 
             while (true)
             {
-                // check if there are available jobs
                 bool dequeued;
                 JobQueueItem item;
+
                 lock (_lock)
                 {
                     // try to dequeue scheduled jobs
                     dequeued = _jobQueue.TryDequeue(out item);
+
+                    // if no job is found, immediately mark as idle while still holding the lock
+                    if (!dequeued)
+                    {
+                        // if disposing (or disposed) => stop worker thread
+                        // (skips re-adding worker to idle worker queue)
+                        if (_disposed is not null)
+                        {
+                            break;
+                        }
+
+                        // enqueue this worker back to idle queue
+                        _idleWorkerIds.Enqueue(workerId);
+
+                        // notify observers via sync-boxes (we just parked an idle worker)
+                        // the synchronous one fires its event immediately inline
+                        // the deferred one simply pushes the value to its channel and returns instantly
+                        var activeWorkerCount = WorkerCount - _idleWorkerIds.Count;
+                        _activeWorkerCountBox.Value = activeWorkerCount;
+                        _activeWorkerCountBoxDeferred.Value = activeWorkerCount;
+                    }
                 }
 
                 if (dequeued)
                 {
-                    // execute the job
-                    var exception = default(Exception);
+                    // execute the job (safely outside the lock)
+                    Exception? exception = null;
                     try
                     {
                         item.Job.Invoke(_ct);
                     }
                     catch (Exception e)
                     {
-                        // catch all exceptions and store them as part of result
+                        // catch all exceptions from the job itself
                         exception = e;
                     }
 
-                    // notify if needed
-                    item.OnComplete?.Invoke(new JobResult(_ct.IsCancellationRequested, exception));
+                    var onCompleteCallback = item.OnComplete;
+                    if (onCompleteCallback is not null)
+                    {
+                        // execute completion callback (safely caught so it doesn't kill the worker)
+                        try
+                        {
+                            // note: evaluating cancellation right here is more accurate than doing it
+                            // at the start of the job, as the user might have cancelled while the job was running
+                            var wasCancelled = _ct.IsCancellationRequested;
+                            var jobResult = new JobResult(wasCancelled, exception);
+                            onCompleteCallback(jobResult);
+                        }
+                        catch
+                        {
+                            // hooks should not throw, we might want to log this,
+                            // for now, we swallow it to protect the dedicated thread's lifespan
+                        }
+                    }
                 }
                 else
                 {
-                    int idleWorkerCountBefore,
-                        idleWorkerCountAfter;
-                    lock (_lock)
-                    {
-                        // if no job + disposing (or disposed) => stop worker thread
-                        // (skips re-adding worker to idle worker queue)
-                        if (_disposed.HasValue)
-                        {
-                            break;
-                        }
-
-                        // enqueue this worker back to idle queue
-                        idleWorkerCountBefore = _idleWorkerIds.Count;
-                        _idleWorkerIds.Enqueue(workerId);
-                        _idleWorkerCount = idleWorkerCountAfter = _idleWorkerIds.Count;
-                    }
-
-                    // notify observers
-                    if (idleWorkerCountBefore != idleWorkerCountAfter)
-                    {
-                        var activeWorkerCount = WorkerCount - idleWorkerCountAfter;
-                        ActiveWorkerCountChanged?.Invoke(this, activeWorkerCount);
-                    }
-
-                    // stop and wait for notification
+                    // stop and wait for notification from Post() or Dispose()
                     synchronizer.WaitOne();
                 }
             }
@@ -355,7 +408,7 @@ namespace RCi.Toolbox
 
         public bool Cancel()
         {
-            if (_ct.IsCancellationRequested)
+            if (Interlocked.CompareExchange(ref _isCancelled, 1, 0) != 0)
             {
                 return false;
             }
@@ -364,102 +417,33 @@ namespace RCi.Toolbox
             return true;
         }
 
-        public void WaitForIdle() => WaitForIdle(TimeSpan.Zero);
-
-        public bool WaitForIdle(TimeSpan timeout)
-        {
-            AutoResetEvent waiter;
-            bool subscribed;
-            lock (_lock)
-            {
-                if (IsIdle)
-                {
-                    // already idle
-                    return true;
-                }
-
-                waiter = new AutoResetEvent(false);
-                subscribed = true;
-                ActiveWorkerCountChanged += OnActiveWorkerCountChanged;
-            }
-
-            try
-            {
-                // block thread and wait for signal
-                return timeout > TimeSpan.Zero
-                    ? waiter.WaitOne(timeout) // with timeout
-                    : waiter.WaitOne(); // indefinitely
-            }
-            finally
-            {
-                // unsubscribe no matter we waited successfully or failed due timeout
-                lock (_lock)
-                {
-                    if (subscribed)
-                    {
-                        ActiveWorkerCountChanged -= OnActiveWorkerCountChanged;
-                        subscribed = false;
-                    }
-                }
-                waiter.Dispose();
-            }
-
-            void OnActiveWorkerCountChanged(object? sender, int activeWorkerCount)
-            {
-                if (activeWorkerCount != 0)
-                {
-                    // not idle yet
-                    return;
-                }
-
-                // only allow idle event trigger once
-                lock (_lock)
-                {
-                    if (!subscribed)
-                    {
-                        // was not subscribed
-                        // exit without unsubscribing and pulsing waiter
-                        return;
-                    }
-                    subscribed = false;
-                    ActiveWorkerCountChanged -= OnActiveWorkerCountChanged;
-                }
-
-                // send signal to unblock waiter
-                waiter.Set();
-            }
-        }
-
         private bool Post(JobQueueItem item)
         {
-            // make sure we can still accept new jobs
-            if (_ct.IsCancellationRequested)
-            {
-                return false;
-            }
-
-            var idleWorkerCount = default(int?);
             lock (_lock)
             {
-                // add to the queue
+                // make sure we can still accept new jobs inside the lock,
+                // this guarantees Dispose() and Cancel() cannot happen concurrently with this check
+                if (_ct.IsCancellationRequested || _disposed is not null)
+                {
+                    return false;
+                }
+
+                // add job to the queue
                 _jobQueue.Enqueue(item);
 
                 // check if there are idle workers
                 if (_idleWorkerIds.TryDequeue(out var idleWorkerId))
                 {
-                    // update idle worker count (we just took one from the queue)
-                    idleWorkerCount = _idleWorkerCount = _idleWorkerIds.Count;
+                    // notify observers via sync-boxes (we just took one idle worker from the queue)
+                    // the synchronous one fires its event immediately inline
+                    // the deferred one simply pushes the value to its channel and returns instantly
+                    var activeWorkerCount = WorkerCount - _idleWorkerIds.Count;
+                    _activeWorkerCountBox.Value = activeWorkerCount;
+                    _activeWorkerCountBoxDeferred.Value = activeWorkerCount;
 
                     // notify worker (will start executing enqueued jobs)
                     _synchronizers[idleWorkerId].Set();
                 }
-            }
-
-            // notify observers
-            if (idleWorkerCount.HasValue)
-            {
-                var activeWorkerCount = WorkerCount - idleWorkerCount.Value;
-                ActiveWorkerCountChanged?.Invoke(this, activeWorkerCount);
             }
 
             return true;
@@ -468,92 +452,185 @@ namespace RCi.Toolbox
         public bool Post(Action<CancellationToken> job, Action<JobResult> onComplete) =>
             Post(new JobQueueItem(job, onComplete));
 
-        public bool Post(Action<CancellationToken> job) => Post(new JobQueueItem(job, default));
+        public bool Post(Action<CancellationToken> job) => Post(new JobQueueItem(job, null));
+
+        public Task<bool> WaitForIdleAsync(
+            TimeSpan timeout,
+            TimeProvider timeProvider,
+            CancellationToken ct
+        ) => _activeWorkerCountBox.WaitForAsync(x => x == 0, timeout, timeProvider, ct);
+
+        public bool WaitForIdle(
+            TimeSpan timeout,
+            TimeProvider timeProvider,
+            CancellationToken ct
+        ) => _activeWorkerCountBox.WaitFor(x => x == 0, timeout, timeProvider, ct);
+
+        public Task<bool> WaitForBusyAsync(
+            TimeSpan timeout,
+            TimeProvider timeProvider,
+            CancellationToken ct
+        ) => _activeWorkerCountBox.WaitForAsync(x => x != 0, timeout, timeProvider, ct);
+
+        public bool WaitForBusy(
+            TimeSpan timeout,
+            TimeProvider timeProvider,
+            CancellationToken ct
+        ) => _activeWorkerCountBox.WaitFor(x => x != 0, timeout, timeProvider, ct);
     }
 
     public static class JobQueueExtensions
     {
-        public static bool Post(
-            this IJobQueue jobQueue,
-            Action job,
-            Action<JobResult> onComplete
-        ) => jobQueue.Post(_ => job(), onComplete);
-
-        public static bool Post(this IJobQueue jobQueue, Action job) => jobQueue.Post(_ => job());
-
-        public static bool Post<T>(
-            this IJobQueue jobQueue,
-            Func<CancellationToken, T> job,
-            Action<JobResult<T>> onComplete
-        )
+        extension(IJobQueue jobQueue)
         {
-            var result = default(T);
-            return jobQueue.Post(
-                ct => result = job(ct),
-                jobResult =>
-                    onComplete.Invoke(
-                        new JobResult<T>(jobResult.Cancelled, jobResult.Exception, result)
-                    )
-            );
-        }
+            public bool Post(Action job, Action<JobResult> onComplete) =>
+                jobQueue.Post(_ => job(), onComplete);
 
-        public static bool Post<T>(
-            this IJobQueue jobQueue,
-            Func<T> job,
-            Action<JobResult<T>> onComplete
-        ) => jobQueue.Post(_ => job(), onComplete);
+            public bool Post(Action job) => jobQueue.Post(_ => job());
 
-        public static bool Send(
-            this IJobQueue jobQueue,
-            Action<CancellationToken> job,
-            out JobResult result
-        )
-        {
-            using var waiter = new AutoResetEvent(false);
-            var resultOut = default(JobResult);
-            var enqueued = jobQueue.Post(
-                job,
-                r =>
-                {
-                    resultOut = r;
-                    waiter.Set();
-                }
-            );
-            if (enqueued)
+            public bool Post<T>(Func<CancellationToken, T> job, Action<JobResult<T>> onComplete)
             {
-                waiter.WaitOne();
+                var result = default(T);
+                return jobQueue.Post(
+                    ct => result = job(ct),
+                    jobResult =>
+                        onComplete(
+                            new JobResult<T>(jobResult.Cancelled, jobResult.Exception, result)
+                        )
+                );
             }
-            result = resultOut;
-            return enqueued;
-        }
 
-        public static bool Send(this IJobQueue jobQueue, Action job, out JobResult result) =>
-            jobQueue.Send(_ => job(), out result);
+            public bool Post<T>(Func<T> job, Action<JobResult<T>> onComplete) =>
+                jobQueue.Post(_ => job(), onComplete);
 
-        public static bool Send(this IJobQueue jobQueue, Action<CancellationToken> job) =>
-            jobQueue.Send(job, out _);
+            //
 
-        public static bool Send(this IJobQueue jobQueue, Action job) => jobQueue.Send(job, out _);
-
-        public static bool Send<T>(
-            this IJobQueue jobQueue,
-            Func<CancellationToken, T> job,
-            out JobResult<T> result
-        )
-        {
-            var value = default(T);
-            var enqueued = jobQueue.Send(
-                ct =>
+            public bool Send(Action<CancellationToken> job, out JobResult result)
+            {
+                using var waiter = new AutoResetEvent(false);
+                var resultOut = default(JobResult);
+                var enqueued = jobQueue.Post(
+                    job,
+                    r =>
+                    {
+                        resultOut = r;
+                        waiter.Set();
+                    }
+                );
+                if (enqueued)
                 {
-                    value = job(ct);
-                },
-                out var resultVanilla
-            );
-            result = new JobResult<T>(resultVanilla.Cancelled, resultVanilla.Exception, value);
-            return enqueued;
-        }
+                    waiter.WaitOne();
+                }
+                result = resultOut;
+                return enqueued;
+            }
 
-        public static bool Send<T>(this IJobQueue jobQueue, Func<T> job, out JobResult<T> result) =>
-            jobQueue.Send(_ => job(), out result);
+            public bool Send(Action job, out JobResult result) =>
+                jobQueue.Send(_ => job(), out result);
+
+            public bool Send(Action<CancellationToken> job) => jobQueue.Send(job, out _);
+
+            public bool Send(Action job) => jobQueue.Send(job, out _);
+
+            public bool Send<T>(Func<CancellationToken, T> job, out JobResult<T> result)
+            {
+                var value = default(T);
+                var enqueued = jobQueue.Send(
+                    ct =>
+                    {
+                        value = job(ct);
+                    },
+                    out var resultVanilla
+                );
+                result = new JobResult<T>(resultVanilla.Cancelled, resultVanilla.Exception, value);
+                return enqueued;
+            }
+
+            public bool Send<T>(Func<T> job, out JobResult<T> result) =>
+                jobQueue.Send(_ => job(), out result);
+
+            //
+
+            public Task<bool> WaitForIdleAsync(TimeSpan timeout, TimeProvider timeProvider) =>
+                jobQueue.WaitForIdleAsync(timeout, timeProvider, CancellationToken.None);
+
+            public Task<bool> WaitForIdleAsync(TimeSpan timeout, CancellationToken ct) =>
+                jobQueue.WaitForIdleAsync(timeout, TimeProvider.System, ct);
+
+            public Task<bool> WaitForIdleAsync(TimeSpan timeout) =>
+                jobQueue.WaitForIdleAsync(timeout, TimeProvider.System, CancellationToken.None);
+
+            public Task<bool> WaitForIdleAsync(CancellationToken ct) =>
+                jobQueue.WaitForIdleAsync(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
+
+            public Task WaitForIdleAsync() =>
+                jobQueue.WaitForIdleAsync(
+                    Timeout.InfiniteTimeSpan,
+                    TimeProvider.System,
+                    CancellationToken.None
+                );
+
+            //
+
+            public bool WaitForIdle(TimeSpan timeout, TimeProvider timeProvider) =>
+                jobQueue.WaitForIdle(timeout, timeProvider, CancellationToken.None);
+
+            public bool WaitForIdle(TimeSpan timeout, CancellationToken ct) =>
+                jobQueue.WaitForIdle(timeout, TimeProvider.System, ct);
+
+            public bool WaitForIdle(TimeSpan timeout) =>
+                jobQueue.WaitForIdle(timeout, TimeProvider.System, CancellationToken.None);
+
+            public bool WaitForIdle(CancellationToken ct) =>
+                jobQueue.WaitForIdle(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
+
+            public void WaitForIdle() =>
+                jobQueue.WaitForIdle(
+                    Timeout.InfiniteTimeSpan,
+                    TimeProvider.System,
+                    CancellationToken.None
+                );
+
+            //
+            public Task<bool> WaitForBusyAsync(TimeSpan timeout, TimeProvider timeProvider) =>
+                jobQueue.WaitForBusyAsync(timeout, timeProvider, CancellationToken.None);
+
+            public Task<bool> WaitForBusyAsync(TimeSpan timeout, CancellationToken ct) =>
+                jobQueue.WaitForBusyAsync(timeout, TimeProvider.System, ct);
+
+            public Task<bool> WaitForBusyAsync(TimeSpan timeout) =>
+                jobQueue.WaitForBusyAsync(timeout, TimeProvider.System, CancellationToken.None);
+
+            public Task<bool> WaitForBusyAsync(CancellationToken ct) =>
+                jobQueue.WaitForBusyAsync(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
+
+            public Task WaitForBusyAsync() =>
+                jobQueue.WaitForBusyAsync(
+                    Timeout.InfiniteTimeSpan,
+                    TimeProvider.System,
+                    CancellationToken.None
+                );
+
+            //
+
+            public bool WaitForBusy(TimeSpan timeout, TimeProvider timeProvider) =>
+                jobQueue.WaitForBusy(timeout, timeProvider, CancellationToken.None);
+
+            public bool WaitForBusy(TimeSpan timeout, CancellationToken ct) =>
+                jobQueue.WaitForBusy(timeout, TimeProvider.System, ct);
+
+            public bool WaitForBusy(TimeSpan timeout) =>
+                jobQueue.WaitForBusy(timeout, TimeProvider.System, CancellationToken.None);
+
+            public bool WaitForBusy(CancellationToken ct) =>
+                jobQueue.WaitForBusy(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
+
+            public void WaitForBusy() =>
+                jobQueue.WaitForBusy(
+                    Timeout.InfiniteTimeSpan,
+                    TimeProvider.System,
+                    CancellationToken.None
+                );
+        }
     }
 }

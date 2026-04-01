@@ -184,7 +184,7 @@ namespace RCi.Toolbox.Tests
 
             jobQueue.WaitForIdle();
             Assert.That(cancellationTokenStates.ToArray().SequenceEqual([false, true]));
-            Assert.That(results.ToArray().SequenceEqual([new JobResult(true, default)]));
+            Assert.That(results.ToArray().SequenceEqual([new JobResult(true, null)]));
         }
 
         [Test]
@@ -410,7 +410,7 @@ namespace RCi.Toolbox.Tests
                 results.Enqueue
             );
             jobQueue.WaitForIdle();
-            Assert.That(results.ToArray().SequenceEqual([new JobResult<int>(false, default, 42)]));
+            Assert.That(results.ToArray().SequenceEqual([new JobResult<int>(false, null, 42)]));
         }
 
         [Test]
@@ -429,7 +429,7 @@ namespace RCi.Toolbox.Tests
             jobQueue.Send<int>(() => throw new Exception("test"), out var result);
             Assert.That(result.Exception, Is.Not.Null);
             Assert.That(result.Exception.Message, Is.EqualTo("test"));
-            Assert.That(result.Result, Is.EqualTo(default(int)));
+            Assert.That(result.Result, Is.EqualTo(0));
         }
     }
 }
