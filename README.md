@@ -3,6 +3,10 @@ Some useful tools.
 
 # Release notes
 
+- Version 2.0.1 - 2026-04-02
+  - Added missing `SleepExtensions` methods
+  - Fixed `CoalescingWorkerParameters.Name` naming
+
 - Version 2.0.0 - 2026-04-01
   - Bumped to target framework to `net10.0`
   - Removed `DateTimePrecise` and `DateTimeOffsetPrecise`
