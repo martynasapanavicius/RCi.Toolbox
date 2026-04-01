@@ -97,7 +97,7 @@ namespace RCi.Toolbox
     {
         public static readonly CoalescingWorkerParameters Default = new();
 
-        public string? JobQueueName { get; init; }
+        public string? Name { get; init; }
         public bool UseBackgroundThread { get; init; } = true;
         public ThreadPriority ThreadPriority { get; init; } = ThreadPriority.BelowNormal;
         public Action<Exception>? OnJobExceptionCallback { get; init; }
@@ -138,7 +138,7 @@ namespace RCi.Toolbox
                     WorkerCount = 1,
                     UseBackgroundThreads = parameters.UseBackgroundThread,
                     ThreadPriority = parameters.ThreadPriority,
-                    Name = parameters.JobQueueName ?? nameof(CoalescingWorker),
+                    Name = parameters.Name ?? nameof(CoalescingWorker),
                 }
             );
         }
