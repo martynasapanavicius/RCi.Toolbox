@@ -1,183 +1,22 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace RCi.Toolbox
+namespace RCi.Toolbox.Boxes
 {
-    public delegate void SyncReadWriteAccessLockedDelegate<T>(Func<T> getter, Action<T> setter);
+    /// <summary>
+    /// User is given a value to evaluate whether this is their desired value.
+    /// User should return <see langword="true"/> when desired value is found (this finishes waiting),
+    /// or <see langword="false"/> to keep waiting for the desired value.
+    /// </summary>
+    public delegate bool SyncBoxWaitForDelegate<in T>(T value);
 
-    public delegate TResult SyncReadWriteAccessLockedDelegate<T, out TResult>(
-        Func<T> getter,
-        Action<T> setter
-    );
-
-    public delegate void SyncReadOnlyAccessLockedDelegate<in T>(Func<T> getter);
-
-    public delegate TResult SyncReadOnlyAccessLockedDelegate<in T, out TResult>(Func<T> getter);
-
-    public interface ISyncReadOnly<out T>
+    public static class SyncBoxExtensions
     {
-        T Value { get; }
-        event EventHandler<T> ValueChanged;
-
-        void AccessLocked(SyncReadOnlyAccessLockedDelegate<T> action);
-
-        TResult AccessLocked<TResult>(SyncReadOnlyAccessLockedDelegate<T, TResult> action);
-    }
-
-    public interface ISync<T> : ISyncReadOnly<T>
-    {
-        new T Value { get; set; }
-
-        void AccessLocked(SyncReadWriteAccessLockedDelegate<T> action);
-
-        TResult AccessLocked<TResult>(SyncReadWriteAccessLockedDelegate<T, TResult> action);
-    }
-
-    public sealed class Sync<T> : ISync<T>
-    {
-        private readonly Lock _lock = new();
-        private readonly Func<T, T, bool> _funcEquals;
-        private T _value;
-
-        public event EventHandler<T>? ValueChanged;
-
-        public T Value
-        {
-            get
-            {
-                lock (_lock)
-                {
-                    return _value;
-                }
-            }
-            set
-            {
-                lock (_lock)
-                {
-                    if (_funcEquals(_value, value))
-                    {
-                        return;
-                    }
-                    _value = value;
-                }
-
-                // fire safely outside the lock
-                ValueChanged?.Invoke(this, value);
-            }
-        }
-
-        public Sync(T initValue, Func<T, T, bool> funcEquals)
-        {
-            _value = initValue;
-            _funcEquals = funcEquals ?? throw new ArgumentNullException(nameof(funcEquals));
-        }
-
-        public Sync(T initValue)
-            : this(initValue, EqualityComparer<T>.Default.Equals) { }
-
-        public Sync(Func<T, T, bool> funcEquals)
-            : this(default!, funcEquals) { }
-
-        public Sync()
-            : this(default(T)!) { }
-
-        private T GetUnlocked() => _value;
-
-        public void AccessLocked(SyncReadWriteAccessLockedDelegate<T> action)
-        {
-            var changed = false;
-            T newValue = default!;
-
-            lock (_lock)
-            {
-                action(
-                    GetUnlocked,
-                    v =>
-                    {
-                        lock (_lock)
-                        {
-                            if (_funcEquals(_value, v))
-                            {
-                                return;
-                            }
-                            _value = v;
-                            changed = true;
-                            newValue = v;
-                        }
-                    }
-                );
-            }
-
-            // fire the event only after the lock is completely released
-            if (changed)
-            {
-                ValueChanged?.Invoke(this, newValue);
-            }
-        }
-
-        public TResult AccessLocked<TResult>(SyncReadWriteAccessLockedDelegate<T, TResult> action)
-        {
-            var changed = false;
-            T newValue = default!;
-            TResult result;
-
-            lock (_lock)
-            {
-                result = action(
-                    GetUnlocked,
-                    v =>
-                    {
-                        lock (_lock)
-                        {
-                            if (_funcEquals(_value, v))
-                            {
-                                return;
-                            }
-                            _value = v;
-                            changed = true;
-                            newValue = v;
-                        }
-                    }
-                );
-            }
-
-            if (changed)
-            {
-                ValueChanged?.Invoke(this, newValue);
-            }
-
-            return result;
-        }
-
-        public void AccessLocked(SyncReadOnlyAccessLockedDelegate<T> action)
-        {
-            lock (_lock)
-            {
-                action(GetUnlocked);
-            }
-        }
-
-        public TResult AccessLocked<TResult>(SyncReadOnlyAccessLockedDelegate<T, TResult> action)
-        {
-            lock (_lock)
-            {
-                return action(GetUnlocked);
-            }
-        }
-
-        public override string ToString() => $"{Value}";
-
-        public static implicit operator T(Sync<T> sync) => sync.Value;
-    }
-
-    public static class SyncExtensions
-    {
-        extension<T>(Sync<T> box)
+        extension<T>(ISyncBox<T> box)
         {
             public async Task<bool> WaitForAsync(
-                Func<T, bool> isDone, // callback to know if we need to stop
+                SyncBoxWaitForDelegate<T> isDone,
                 TimeSpan timeout,
                 TimeProvider timeProvider,
                 CancellationToken ct
@@ -256,7 +95,7 @@ namespace RCi.Toolbox
                 {
                     // delegate removal is inherently thread-safe in C#,
                     // whether we succeeded, timed out, or were canceled, we clean up
-                    box.ValueChanged -= OnValueChanged;
+                    box.ValueChanged -= OnValueChanged; // this is a noop if it was already unhooked in the OnValueChanged callback
                 }
 
                 void OnValueChanged(object? sender, T value)
@@ -277,7 +116,7 @@ namespace RCi.Toolbox
             }
 
             public bool WaitFor(
-                Func<T, bool> isDone, // callback to know if we need to stop
+                SyncBoxWaitForDelegate<T> isDone,
                 TimeSpan timeout,
                 TimeProvider timeProvider,
                 CancellationToken ct
@@ -408,24 +247,20 @@ namespace RCi.Toolbox
             }
 
             public Task<bool> WaitForAsync(
-                Func<T, bool> isDone, // callback to know if we need to stop
+                SyncBoxWaitForDelegate<T> isDone,
                 TimeSpan timeout,
                 CancellationToken ct
             ) => box.WaitForAsync(isDone, timeout, TimeProvider.System, ct);
 
-            public Task<bool> WaitForAsync(
-                Func<T, bool> isDone, // callback to know if we need to stop
-                TimeSpan timeout
-            ) => box.WaitForAsync(isDone, timeout, TimeProvider.System, CancellationToken.None);
+            public Task<bool> WaitForAsync(SyncBoxWaitForDelegate<T> isDone, TimeSpan timeout) =>
+                box.WaitForAsync(isDone, timeout, TimeProvider.System, CancellationToken.None);
 
             public Task<bool> WaitForAsync(
-                Func<T, bool> isDone, // callback to know if we need to stop
+                SyncBoxWaitForDelegate<T> isDone,
                 CancellationToken ct
             ) => box.WaitForAsync(isDone, Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
 
-            public Task WaitForAsync(
-                Func<T, bool> isDone // callback to know if we need to stop
-            ) =>
+            public Task WaitForAsync(SyncBoxWaitForDelegate<T> isDone) =>
                 box.WaitForAsync(
                     isDone,
                     Timeout.InfiniteTimeSpan,
@@ -434,24 +269,18 @@ namespace RCi.Toolbox
                 );
 
             public bool WaitFor(
-                Func<T, bool> isDone, // callback to know if we need to stop
+                SyncBoxWaitForDelegate<T> isDone,
                 TimeSpan timeout,
                 CancellationToken ct
             ) => box.WaitFor(isDone, timeout, TimeProvider.System, CancellationToken.None);
 
-            public bool WaitFor(
-                Func<T, bool> isDone, // callback to know if we need to stop
-                TimeSpan timeout
-            ) => box.WaitFor(isDone, timeout, TimeProvider.System, CancellationToken.None);
+            public bool WaitFor(SyncBoxWaitForDelegate<T> isDone, TimeSpan timeout) =>
+                box.WaitFor(isDone, timeout, TimeProvider.System, CancellationToken.None);
 
-            public bool WaitFor(
-                Func<T, bool> isDone, // callback to know if we need to stop
-                CancellationToken ct
-            ) => box.WaitFor(isDone, Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
+            public bool WaitFor(SyncBoxWaitForDelegate<T> isDone, CancellationToken ct) =>
+                box.WaitFor(isDone, Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
 
-            public void WaitFor(
-                Func<T, bool> isDone // callback to know if we need to stop
-            ) =>
+            public void WaitFor(SyncBoxWaitForDelegate<T> isDone) =>
                 box.WaitFor(
                     isDone,
                     Timeout.InfiniteTimeSpan,
