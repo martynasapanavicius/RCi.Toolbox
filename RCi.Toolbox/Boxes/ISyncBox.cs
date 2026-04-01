@@ -13,21 +13,15 @@ namespace RCi.Toolbox.Boxes
 
     public delegate TResult SyncBoxReadOnlyAccessLockedDelegate<in T, out TResult>(Func<T> getter);
 
-    public interface ISyncBoxReadOnly<out T>
+    public interface ISyncBoxReadOnly<out T> : IBoxReadOnly<T>
     {
-        T Value { get; }
-
-        event EventHandler<T> ValueChanged;
-
         void AccessLocked(SyncBoxReadOnlyAccessLockedDelegate<T> action);
 
         TResult AccessLocked<TResult>(SyncBoxReadOnlyAccessLockedDelegate<T, TResult> action);
     }
 
-    public interface ISyncBox<T> : ISyncBoxReadOnly<T>
+    public interface ISyncBox<T> : ISyncBoxReadOnly<T>, IBox<T>
     {
-        new T Value { get; set; }
-
         void AccessLocked(SyncBoxReadWriteAccessLockedDelegate<T> action);
 
         TResult AccessLocked<TResult>(SyncBoxReadWriteAccessLockedDelegate<T, TResult> action);
