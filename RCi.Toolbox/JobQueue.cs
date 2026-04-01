@@ -11,7 +11,7 @@ namespace RCi.Toolbox
     /// Job execution result.
     /// </summary>
     /// <param name="Cancelled">Whether job queue was cancelled after job was already enqueued.</param>
-    /// <param name="Exception">Whether exception was thrown during job execution</param>
+    /// <param name="Exception">Whether exception was thrown during job execution.</param>
     /// <param name="Result">Job result.</param>
     public readonly record struct JobResult<T>(bool Cancelled, Exception? Exception, T? Result);
 
@@ -147,6 +147,12 @@ namespace RCi.Toolbox
     {
         public static readonly JobQueueParameters Default = new();
 
+        /// <summary>
+        /// How many dedicated workers (threads) to use for parallel job execution?
+        /// If the value is less than 1 it will be clamped to 1. Although there's no
+        /// upper limit, be aware to respect <see cref="Environment.ProcessorCount"/>,
+        /// otherwise thread context switching will create unnecessary overhead.
+        /// </summary>
         public int WorkerCount { get; init; } = 1;
 
         public bool UseBackgroundThreads { get; init; } = true;
@@ -212,11 +218,10 @@ namespace RCi.Toolbox
 
         public JobQueue(JobQueueParameters parameters)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(
-                parameters.WorkerCount,
-                1,
-                nameof(parameters.WorkerCount)
-            );
+            if (parameters.WorkerCount < 1)
+            {
+                parameters = parameters with { WorkerCount = 1 };
+            }
 
             _cts = new CancellationTokenSource();
             _ct = _cts.Token;

@@ -29,21 +29,31 @@ namespace RCi.Toolbox.Tests
         }
 
         [Test]
-        public static void Ctor_Throws_WorkerCount_Zero()
+        public static void Ctor_Clamped_WorkerCount_Zero()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() =>
+            var parameters = new JobQueueParameters
             {
-                _ = new JobQueue(new JobQueueParameters { WorkerCount = 0 });
-            });
+                WorkerCount = 0,
+                Name = "Some name",
+                ThreadPriority = ThreadPriority.Lowest,
+                UseBackgroundThreads = true,
+            };
+            using var jobQueue = new JobQueue(parameters);
+            Assert.That(jobQueue.Parameters, Is.EqualTo(parameters with { WorkerCount = 1 }));
         }
 
         [Test]
-        public static void Ctor_Throws_WorkerCount_Negative()
+        public static void Ctor_Clamped_WorkerCount_Negative()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() =>
+            var parameters = new JobQueueParameters
             {
-                _ = new JobQueue(new JobQueueParameters { WorkerCount = -1 });
-            });
+                WorkerCount = -1,
+                Name = "Some name",
+                ThreadPriority = ThreadPriority.Lowest,
+                UseBackgroundThreads = true,
+            };
+            using var jobQueue = new JobQueue(parameters);
+            Assert.That(jobQueue.Parameters, Is.EqualTo(parameters with { WorkerCount = 1 }));
         }
 
         [Test]
