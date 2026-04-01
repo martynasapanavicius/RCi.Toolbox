@@ -237,11 +237,11 @@ namespace RCi.Toolbox.Tests
         }
 
         [Test]
-        public static void IsWorking()
+        public static void IsBusy()
         {
             using var jobQueue = new JobQueue();
 
-            var before = jobQueue.IsWorking;
+            var before = jobQueue.IsBusy;
             Assert.That(before, Is.False);
 
             using var jobsCanExecute = new ManualResetEvent(false);
@@ -251,7 +251,7 @@ namespace RCi.Toolbox.Tests
                 jobsCanExecute.WaitOne();
             });
 
-            var during = jobQueue.IsWorking;
+            var during = jobQueue.IsBusy;
             Assert.That(during, Is.True);
 
             // unblock job
@@ -260,7 +260,7 @@ namespace RCi.Toolbox.Tests
             // wait for jobs to finish
             jobQueue.WaitForIdle();
 
-            var after = jobQueue.IsWorking;
+            var after = jobQueue.IsBusy;
             Assert.That(after, Is.False);
         }
 

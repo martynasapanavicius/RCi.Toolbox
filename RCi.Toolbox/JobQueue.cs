@@ -32,7 +32,7 @@ namespace RCi.Toolbox
         int WorkerCount { get; }
 
         /// <summary>
-        /// Active worker count. 0 - job queue is idle, otherwise it is actively executing at least one job.
+        /// Active worker count. 0 - job queue is idle, otherwise it is busy (actively executing at least one job).
         /// </summary>
         int ActiveWorkerCount { get; }
 
@@ -44,7 +44,7 @@ namespace RCi.Toolbox
         /// <summary>
         /// Whether job queue is currently working (at least one worker is active).
         /// </summary>
-        bool IsWorking { get; }
+        bool IsBusy { get; }
 
         /// <summary>
         /// Whether job queue is cancelled.
@@ -76,12 +76,26 @@ namespace RCi.Toolbox
         bool Post(Action<CancellationToken> job);
 
         /// <summary>
-        /// Active worker count changed. Events are delivered synchronously.
+        /// Fired synchronously while holding the internal queue lock. This guarantees strict chronological ordering.
+        ///
+        /// WARNING: Because the global queue lock is held during invocation, any long-running operations or I/O
+        /// will globally freeze the queue, blocking all other threads from posting or dequeuing jobs.
+        /// Acquiring external locks inside this handler also introduces a high risk of cross-lock deadlocks.
+        ///
+        /// While re-entrant calls to the queue (e.g., calling <see cref="Post(Action{CancellationToken})"/>)
+        /// are technically thread-safe due to lock re-entrancy, using <see cref="ActiveWorkerCountChangedDeferred"/>
+        /// is highly recommended for most use cases.
         /// </summary>
         public event EventHandler<int>? ActiveWorkerCountChanged;
 
         /// <summary>
-        /// Active worker count changed. Events are delivered asynchronously.
+        /// Fired asynchronously via a background channel pump outside the internal queue lock.
+        ///
+        /// This is the recommended event for general use. It is completely safe for heavy lifting,
+        /// UI thread marshaling, acquiring external locks, and making re-entrant calls back into the <see cref="JobQueue"/>.
+        ///
+        /// Note: Because delivery is deferred, the reported worker count represents a chronological history
+        /// and might slightly lag behind the absolute real-time state under heavy concurrent load.
         /// </summary>
         public event EventHandler<int>? ActiveWorkerCountChangedDeferred;
 
@@ -181,39 +195,47 @@ namespace RCi.Toolbox
         private readonly Queue<int> _idleWorkerIds;
         private readonly AutoResetEvent[] _synchronizers;
         private readonly Thread[] _workers;
-        private readonly SyncBox<int> _activeWorkerCountBox;
-        private readonly SyncBoxDeferred<int> _activeWorkerCountBoxDeferred;
+        private readonly SyncBox<int> _activeWorkerCountBox; // can be used for internal state tracking (fully synchronized)
+        private readonly SyncBoxDeferred<int> _activeWorkerCountBoxDeferred; // only for outside observers, do not use for internal state tracking
 
         private int _isCancelled; // maintained via interlocked (outside locked context)
 
+        /// <inheritdoc />
         public int WorkerCount => Parameters.WorkerCount;
+
+        /// <inheritdoc />
         public int ActiveWorkerCount => _activeWorkerCountBox.Value;
+
+        /// <inheritdoc />
         public bool IsIdle => ActiveWorkerCount == 0;
-        public bool IsWorking => ActiveWorkerCount > 0;
+
+        /// <inheritdoc />
+        public bool IsBusy => ActiveWorkerCount > 0;
+
+        /// <inheritdoc />
         public bool IsCancelled => _ct.IsCancellationRequested;
 
-        /// <summary>
-        /// Fired synchronously while holding the internal queue lock.
-        /// WARNING: Do not perform heavy lifting or call queue methods from this handler.
-        /// </summary>
+        /// <inheritdoc />
         public event EventHandler<int>? ActiveWorkerCountChanged
         {
             add => _activeWorkerCountBox.ValueChanged += value;
             remove => _activeWorkerCountBox.ValueChanged -= value;
         }
 
-        /// <summary>
-        /// Fired asynchronously via a background channel pump.
-        /// Safe for heavy lifting, UI updates, and calling back into the JobQueue.
-        /// </summary>
+        /// <inheritdoc />
         public event EventHandler<int>? ActiveWorkerCountChangedDeferred
         {
             add => _activeWorkerCountBoxDeferred.ValueChanged += value;
             remove => _activeWorkerCountBoxDeferred.ValueChanged -= value;
         }
 
+        /// <inheritdoc />
         public event EventHandler? Cancelled;
+
+        /// <inheritdoc />
         public event EventHandler? Disposing;
+
+        /// <inheritdoc />
         public event EventHandler? Disposed;
 
         public JobQueue(JobQueueParameters parameters)
@@ -411,6 +433,7 @@ namespace RCi.Toolbox
             }
         }
 
+        /// <inheritdoc />
         public bool Cancel()
         {
             if (Interlocked.CompareExchange(ref _isCancelled, 1, 0) != 0)
@@ -454,29 +477,35 @@ namespace RCi.Toolbox
             return true;
         }
 
+        /// <inheritdoc />
         public bool Post(Action<CancellationToken> job, Action<JobResult> onComplete) =>
             Post(new JobQueueItem(job, onComplete));
 
+        /// <inheritdoc />
         public bool Post(Action<CancellationToken> job) => Post(new JobQueueItem(job, null));
 
+        /// <inheritdoc />
         public Task<bool> WaitForIdleAsync(
             TimeSpan timeout,
             TimeProvider timeProvider,
             CancellationToken ct
         ) => _activeWorkerCountBox.WaitForAsync(x => x == 0, timeout, timeProvider, ct);
 
+        /// <inheritdoc />
         public bool WaitForIdle(
             TimeSpan timeout,
             TimeProvider timeProvider,
             CancellationToken ct
         ) => _activeWorkerCountBox.WaitFor(x => x == 0, timeout, timeProvider, ct);
 
+        /// <inheritdoc />
         public Task<bool> WaitForBusyAsync(
             TimeSpan timeout,
             TimeProvider timeProvider,
             CancellationToken ct
         ) => _activeWorkerCountBox.WaitForAsync(x => x != 0, timeout, timeProvider, ct);
 
+        /// <inheritdoc />
         public bool WaitForBusy(
             TimeSpan timeout,
             TimeProvider timeProvider,
@@ -488,11 +517,14 @@ namespace RCi.Toolbox
     {
         extension(IJobQueue jobQueue)
         {
+            /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
             public bool Post(Action job, Action<JobResult> onComplete) =>
                 jobQueue.Post(_ => job(), onComplete);
 
+            /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
             public bool Post(Action job) => jobQueue.Post(_ => job());
 
+            /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
             public bool Post<T>(Func<CancellationToken, T> job, Action<JobResult<T>> onComplete)
             {
                 var result = default(T);
@@ -505,11 +537,23 @@ namespace RCi.Toolbox
                 );
             }
 
+            /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
             public bool Post<T>(Func<T> job, Action<JobResult<T>> onComplete) =>
                 jobQueue.Post(_ => job(), onComplete);
 
             //
 
+            /// <summary>
+            /// Enqueues the job. Workers will dequeue and execute them.
+            /// This blocks current thread and waits for job to be executed by a worker
+            /// (meaning all previously enqueued jobs will be picked by workers first).
+            /// </summary>
+            /// <param name="job">Job to execute (with <see cref="CancellationToken"/> to check whether job queue was cancelled).</param>
+            /// <param name="result">Job result.</param>
+            /// <returns>
+            ///     <see langword="true"/> - if job was enqueued and executed successfully,
+            ///     <see langword="false"/> - job queue is cancelled and job was rejected.
+            /// </returns>
             public bool Send(Action<CancellationToken> job, out JobResult result)
             {
                 using var waiter = new AutoResetEvent(false);
@@ -530,13 +574,17 @@ namespace RCi.Toolbox
                 return enqueued;
             }
 
+            /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action job, out JobResult result) =>
                 jobQueue.Send(_ => job(), out result);
 
+            /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action<CancellationToken> job) => jobQueue.Send(job, out _);
 
+            /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action job) => jobQueue.Send(job, out _);
 
+            /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send<T>(Func<CancellationToken, T> job, out JobResult<T> result)
             {
                 var value = default(T);
@@ -551,23 +599,31 @@ namespace RCi.Toolbox
                 return enqueued;
             }
 
+            /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send<T>(Func<T> job, out JobResult<T> result) =>
                 jobQueue.Send(_ => job(), out result);
 
             //
 
+            /// <inheritdoc cref="JobQueue.WaitForIdleAsync" />
             public Task<bool> WaitForIdleAsync(TimeSpan timeout, TimeProvider timeProvider) =>
                 jobQueue.WaitForIdleAsync(timeout, timeProvider, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForIdleAsync" />
             public Task<bool> WaitForIdleAsync(TimeSpan timeout, CancellationToken ct) =>
                 jobQueue.WaitForIdleAsync(timeout, TimeProvider.System, ct);
 
+            /// <inheritdoc cref="JobQueue.WaitForIdleAsync" />
             public Task<bool> WaitForIdleAsync(TimeSpan timeout) =>
                 jobQueue.WaitForIdleAsync(timeout, TimeProvider.System, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForIdleAsync" />
             public Task<bool> WaitForIdleAsync(CancellationToken ct) =>
                 jobQueue.WaitForIdleAsync(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
 
+            /// <summary>
+            /// Blocks thread and waits for job queue to become idle.
+            /// </summary>
             public Task WaitForIdleAsync() =>
                 jobQueue.WaitForIdleAsync(
                     Timeout.InfiniteTimeSpan,
@@ -577,18 +633,25 @@ namespace RCi.Toolbox
 
             //
 
+            /// <inheritdoc cref="JobQueue.WaitForIdle" />
             public bool WaitForIdle(TimeSpan timeout, TimeProvider timeProvider) =>
                 jobQueue.WaitForIdle(timeout, timeProvider, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForIdle" />
             public bool WaitForIdle(TimeSpan timeout, CancellationToken ct) =>
                 jobQueue.WaitForIdle(timeout, TimeProvider.System, ct);
 
+            /// <inheritdoc cref="JobQueue.WaitForIdle" />
             public bool WaitForIdle(TimeSpan timeout) =>
                 jobQueue.WaitForIdle(timeout, TimeProvider.System, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForIdle" />
             public bool WaitForIdle(CancellationToken ct) =>
                 jobQueue.WaitForIdle(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
 
+            /// <summary>
+            /// Blocks thread and waits for job queue to become idle.
+            /// </summary>
             public void WaitForIdle() =>
                 jobQueue.WaitForIdle(
                     Timeout.InfiniteTimeSpan,
@@ -597,18 +660,25 @@ namespace RCi.Toolbox
                 );
 
             //
+            /// <inheritdoc cref="JobQueue.WaitForBusyAsync" />
             public Task<bool> WaitForBusyAsync(TimeSpan timeout, TimeProvider timeProvider) =>
                 jobQueue.WaitForBusyAsync(timeout, timeProvider, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForBusyAsync" />
             public Task<bool> WaitForBusyAsync(TimeSpan timeout, CancellationToken ct) =>
                 jobQueue.WaitForBusyAsync(timeout, TimeProvider.System, ct);
 
+            /// <inheritdoc cref="JobQueue.WaitForBusyAsync" />
             public Task<bool> WaitForBusyAsync(TimeSpan timeout) =>
                 jobQueue.WaitForBusyAsync(timeout, TimeProvider.System, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForBusyAsync" />
             public Task<bool> WaitForBusyAsync(CancellationToken ct) =>
                 jobQueue.WaitForBusyAsync(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
 
+            /// <summary>
+            /// Blocks thread and waits for job queue to become busy.
+            /// </summary>
             public Task WaitForBusyAsync() =>
                 jobQueue.WaitForBusyAsync(
                     Timeout.InfiniteTimeSpan,
@@ -618,18 +688,25 @@ namespace RCi.Toolbox
 
             //
 
+            /// <inheritdoc cref="JobQueue.WaitForBusy" />
             public bool WaitForBusy(TimeSpan timeout, TimeProvider timeProvider) =>
                 jobQueue.WaitForBusy(timeout, timeProvider, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForBusy" />
             public bool WaitForBusy(TimeSpan timeout, CancellationToken ct) =>
                 jobQueue.WaitForBusy(timeout, TimeProvider.System, ct);
 
+            /// <inheritdoc cref="JobQueue.WaitForBusy" />
             public bool WaitForBusy(TimeSpan timeout) =>
                 jobQueue.WaitForBusy(timeout, TimeProvider.System, CancellationToken.None);
 
+            /// <inheritdoc cref="JobQueue.WaitForBusy" />
             public bool WaitForBusy(CancellationToken ct) =>
                 jobQueue.WaitForBusy(Timeout.InfiniteTimeSpan, TimeProvider.System, ct);
 
+            /// <summary>
+            /// Blocks thread and waits for job queue to become busy.
+            /// </summary>
             public void WaitForBusy() =>
                 jobQueue.WaitForBusy(
                     Timeout.InfiniteTimeSpan,
