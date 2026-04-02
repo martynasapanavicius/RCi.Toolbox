@@ -436,11 +436,18 @@ namespace RCi.Toolbox
         /// <inheritdoc />
         public bool Cancel()
         {
+            // ensure cancellation only happens once
             if (Interlocked.CompareExchange(ref _isCancelled, 1, 0) != 0)
             {
                 return false;
             }
-            _cts.Cancel();
+
+            lock (_lock)
+            {
+                // synchronize the actual cancellation with Post() and Dispose()
+                _cts.Cancel();
+            }
+
             Cancelled?.Invoke(this, EventArgs.Empty);
             return true;
         }
