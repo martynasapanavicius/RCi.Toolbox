@@ -107,6 +107,17 @@ namespace RCi.Toolbox.Tests.Collections
         }
 
         [Test]
+        public static void GetEnumerator_CanHandleNulls()
+        {
+            using var actual = new RentedArray<object?>([null, null, null]);
+            using var enumerator = actual.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                Assert.That(enumerator.Current, Is.Null);
+            }
+        }
+
+        [Test]
         public static void Clear()
         {
             using var actual = CreateTestRentedArray();
