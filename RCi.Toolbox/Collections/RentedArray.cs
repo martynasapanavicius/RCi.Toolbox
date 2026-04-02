@@ -7,8 +7,12 @@ using System.Runtime.CompilerServices;
 
 namespace RCi.Toolbox.Collections
 {
+    /// <summary>
+    /// Provides static factory methods for <see cref="RentedArray{T}"/>.
+    /// </summary>
     public static class RentedArray
     {
+        /// <inheritdoc cref="RentedArray{T}.UnsafeCreateFromExisting"/>
         public static RentedArray<T> UnsafeCreateFromExisting<T>(
             int length,
             T[] rented,
@@ -16,9 +20,16 @@ namespace RCi.Toolbox.Collections
         ) => RentedArray<T>.UnsafeCreateFromExisting(length, rented, pool);
     }
 
+    /// <summary>
+    /// A high-performance, fixed-size collection backed by <see cref="ArrayPool{T}"/>.
+    /// </summary>
     public sealed class RentedArray<T> : IMemoryOwner<T>, IList<T>, IReadOnlyList<T>
     {
+        /// <summary>
+        /// Gets the logical number of elements contained in the <see cref="RentedArray{T}"/>.
+        /// </summary>
         public readonly int Length;
+
         private readonly ArrayPool<T> _pool;
         private T[] _array;
 
@@ -29,6 +40,13 @@ namespace RCi.Toolbox.Collections
             _array = rented;
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedArray{T}"/> class with the specified length, using a specific array pool.
+        /// </summary>
+        /// <param name="length">The exact number of elements the array will logically contain.</param>
+        /// <param name="pool">The pool to rent the underlying array from.</param>
+        /// <param name="clearArray">If <c>true</c>, zeroes out the rented memory to prevent reading previous pool state. Defaults to <c>true</c>.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="length"/> is less than 0.</exception>
         public RentedArray(int length, ArrayPool<T> pool, bool clearArray = true)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(length, 0);
@@ -48,9 +66,19 @@ namespace RCi.Toolbox.Collections
             }
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedArray{T}"/> class with the specified length, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
+        /// <param name="length">The exact number of elements the array will logically contain.</param>
+        /// <param name="clearArray">If <c>true</c>, zeroes out the rented memory. Defaults to <c>true</c>.</param>
         public RentedArray(int length, bool clearArray = true)
             : this(length, ArrayPool<T>.Shared, clearArray) { }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedArray{T}"/> class by copying elements from an existing collection, using a specific array pool.
+        /// </summary>
+        /// <param name="items">The collection whose elements are copied into the new array.</param>
+        /// <param name="pool">The pool to rent the underlying array from.</param>
         public RentedArray(IEnumerable<T> items, ArrayPool<T> pool)
         {
             _pool = pool;
@@ -117,9 +145,17 @@ namespace RCi.Toolbox.Collections
             }
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedArray{T}"/> class by copying elements
+        /// from an existing collection, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
+        /// <param name="items">The collection whose elements are copied into the new array.</param>
         public RentedArray(IEnumerable<T> items)
             : this(items, ArrayPool<T>.Shared) { }
 
+        /// <summary>
+        /// Returns the underlying array to the pool and invalidates this instance.
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
@@ -142,16 +178,31 @@ namespace RCi.Toolbox.Collections
             _array = null!;
         }
 
+        /// <summary>
+        /// Gets a <see cref="Memory{T}"/> view sliced to the exact logical length of the rented array.
+        /// </summary>
         public Memory<T> Memory => new(_array, 0, Length);
 
+        /// <summary>
+        /// Gets a <see cref="ReadOnlyMemory{T}"/> view sliced to the exact logical length of the rented array.
+        /// </summary>
         public ReadOnlyMemory<T> ReadOnlyMemory => new(_array, 0, Length);
 
+        /// <summary>
+        /// Gets a <see cref="Span{T}"/> view sliced to the exact logical length of the rented array.
+        /// </summary>
         public Span<T> Span => new(_array, 0, Length);
 
+        /// <summary>
+        /// Gets a <see cref="ReadOnlySpan{T}"/> view sliced to the exact logical length of the rented array.
+        /// </summary>
         public ReadOnlySpan<T> ReadOnlySpan => new(_array, 0, Length);
 
         #region // IEnumerable<T>
 
+        /// <summary>
+        /// Zero-allocation struct enumerator for <see cref="RentedArray{T}"/>.
+        /// </summary>
         public struct Enumerator : IEnumerator<T>
         {
             private readonly RentedArray<T> _array;
@@ -201,6 +252,9 @@ namespace RCi.Toolbox.Collections
             public void Reset() => _index = -1;
         }
 
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection without allocating on the heap.
+        /// </summary>
         public Enumerator GetEnumerator() => new(this);
 
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => new Enumerator(this);
@@ -213,6 +267,10 @@ namespace RCi.Toolbox.Collections
 
         public void Add(T item) => throw new InvalidOperationException("cannot add items to array");
 
+        /// <summary>
+        /// Clears the logical contents of the array by resetting elements to their default value.
+        /// This does not shrink the array or return it to the pool.
+        /// </summary>
         public void Clear()
         {
             var length = Length;
@@ -230,6 +288,9 @@ namespace RCi.Toolbox.Collections
         public bool Remove(T item) =>
             throw new InvalidOperationException("cannot remove items from array");
 
+        /// <summary>
+        /// Gets the number of logical elements contained in the array.
+        /// </summary>
         public int Count => Length;
 
         public bool IsReadOnly => false;
@@ -246,6 +307,11 @@ namespace RCi.Toolbox.Collections
         public void RemoveAt(int index) =>
             throw new InvalidOperationException("cannot remove items from array");
 
+        /// <summary>
+        /// Gets or sets the element at the specified index.
+        /// </summary>
+        /// <param name="index">The zero-based index of the element to get or set.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown if the index is outside the logical <see cref="Length"/>.</exception>
         public T this[int index]
         {
             get
@@ -269,18 +335,32 @@ namespace RCi.Toolbox.Collections
         #endregion
 
         /// <summary>
-        /// WARNING: DO NOT STORE EXPOSED UNDERLYING ARRAY REFERENCE!
-        /// If the reference of the exposed underlying array will be stored somewhere,
-        /// the <see cref="RentedArray{T}"/> will not know about this and will return rented array it to the pool.
-        /// Note that underlying array's length might be larger.
+        /// Executes a delegate against the raw underlying array.
         /// </summary>
+        /// <remarks>
+        /// <strong>WARNING: DO NOT STORE EXPOSED UNDERLYING ARRAY REFERENCE!</strong>
+        /// <br/>If the reference of the exposed underlying array is stored somewhere, the <see cref="RentedArray{T}"/>
+        /// will not know about this and will eventually return it to the pool, causing memory corruption.
+        /// <br/>Note that the underlying array's length is likely larger than the logical <see cref="Length"/> of this collection.
+        /// </remarks>
+        /// <param name="action">The action to execute against the raw array.</param>
         public void UnsafeAccessUnderlyingArray(Action<T[]> action) => action(_array);
 
         /// <summary>
-        /// WARNING: use with caution!
-        /// Creates <see cref="RentedArray{T}"/> using provided rented array and will start managing it
-        /// (will return to provided <see cref="pool"/> on <see cref="Dispose"/>).
+        /// Creates a <see cref="RentedArray{T}"/> using a provided array and assumes ownership of it.
         /// </summary>
+        /// <remarks>
+        /// <strong>WARNING: Use with caution!</strong> The <see cref="RentedArray{T}"/> will assume management
+        /// of the array and will return it to the provided <paramref name="pool"/> on <see cref="Dispose"/>.
+        /// Do not return the array to the pool manually after calling this method.
+        /// </remarks>
+        /// <param name="length">The logical length of the array data.</param>
+        /// <param name="rented">The existing array to take ownership of.</param>
+        /// <param name="pool">The pool the array belongs to.</param>
+        /// <returns>A managed <see cref="RentedArray{T}"/> instance.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown if <paramref name="length"/> exceeds the actual length of the <paramref name="rented"/> array.
+        /// </exception>
         public static RentedArray<T> UnsafeCreateFromExisting(
             int length,
             T[] rented,
@@ -292,11 +372,14 @@ namespace RCi.Toolbox.Collections
         }
 
         /// <summary>
-        /// WARNING: use with caution!
-        /// This detaches rented array from the container (<see cref="RentedArray{T}"/>) and
-        /// won't be returned to <see cref="ArrayPool{T}"/> on <see cref="Dispose"/>.
-        /// User is now responsible to return the array to the pool.
+        /// Detaches the underlying array from this collection, transferring ownership to the caller.
         /// </summary>
+        /// <remarks>
+        /// <strong>WARNING: Use with caution!</strong> This operation permanently detaches the array.
+        /// The <see cref="RentedArray{T}"/> instance is effectively disposed and can no longer be used.
+        /// The caller assumes full responsibility for returning the array to the provided <see cref="ArrayPool{T}"/>.
+        /// </remarks>
+        /// <returns>A tuple containing the raw array and the exact pool it must be returned to.</returns>
         public (T[] Array, ArrayPool<T> Pool) UnsafeDetachUnderlyingArray()
         {
             var array = _array;
@@ -305,12 +388,21 @@ namespace RCi.Toolbox.Collections
         }
     }
 
+    /// <summary>
+    /// Provides extension methods for creating <see cref="RentedArray{T}"/> instances.
+    /// </summary>
     public static class RentedArrayExtensions
     {
         extension<T>(IEnumerable<T> items)
         {
+            /// <summary>
+            /// Allocates a new <see cref="RentedArray{T}"/> from the specified pool and populates it with elements from the sequence.
+            /// </summary>
             public RentedArray<T> ToRentedArray(ArrayPool<T> pool) => new(items, pool);
 
+            /// <summary>
+            /// Allocates a new <see cref="RentedArray{T}"/> from <see cref="ArrayPool{T}.Shared"/> and populates it with elements from the sequence.
+            /// </summary>
             public RentedArray<T> ToRentedArray() => items.ToRentedArray(ArrayPool<T>.Shared);
         }
     }

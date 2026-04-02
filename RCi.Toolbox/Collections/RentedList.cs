@@ -8,6 +8,11 @@ using System.Runtime.CompilerServices;
 
 namespace RCi.Toolbox.Collections
 {
+    /// <summary>
+    /// A high-performance, dynamically resizable collection backed by <see cref="ArrayPool{T}"/>.
+    /// Dynamic Resizing: like <see cref="List{T}"/>, this collection grows automatically.
+    /// However, resizing requires renting a new array and returning the old one to the pool.
+    /// </summary>
     public sealed class RentedList<T> : IDisposable, IList<T>, IReadOnlyList<T>
     {
         private const int DefaultCapacity = 4;
@@ -17,21 +22,45 @@ namespace RCi.Toolbox.Collections
         private int _size;
         private int _version;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that is empty
+        /// and has the specified initial capacity, using a specific array pool.
+        /// </summary>
+        /// <param name="initCapacity">The number of elements that the new list can initially store.</param>
+        /// <param name="pool">The pool to rent the underlying array from.</param>
         public RentedList(int initCapacity, ArrayPool<T> pool)
         {
             _pool = pool;
             _items = pool.Rent(initCapacity);
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that is empty
+        /// and has the specified initial capacity, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
         public RentedList(int initCapacity)
             : this(initCapacity, ArrayPool<T>.Shared) { }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that is empty
+        /// and has the default initial capacity, using a specific array pool.
+        /// </summary>
         public RentedList(ArrayPool<T> pool)
             : this(DefaultCapacity, pool) { }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that is empty
+        /// and has the default initial capacity, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
         public RentedList()
             : this(DefaultCapacity, ArrayPool<T>.Shared) { }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that contains elements
+        /// copied from the specified collection, using a specific array pool.
+        /// </summary>
+        /// <param name="initItems">The collection whose elements are copied into the new list.</param>
+        /// <param name="pool">The pool to rent the underlying array from.</param>
         public RentedList(IEnumerable<T> initItems, ArrayPool<T> pool)
         {
             _pool = pool;
@@ -66,9 +95,16 @@ namespace RCi.Toolbox.Collections
             }
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that contains elements
+        /// copied from the specified collection, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
         public RentedList(IEnumerable<T> initItems)
             : this(initItems, ArrayPool<T>.Shared) { }
 
+        /// <summary>
+        /// Returns the underlying array to the pool and invalidates this instance.
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
@@ -122,7 +158,7 @@ namespace RCi.Toolbox.Collections
         /// <remarks>
         /// <strong>WARNING:</strong> The returned span is only valid for the exact moment it is created.
         /// <br/>• <strong>Do not</strong> mutate the list (add, insert, or clear) while holding this span. Mutations can trigger a reallocation, returning the original array to the pool.
-        /// <br/>• Writing to a span after a resize has occurred will overwrite memory belonging to another component, causing severe bugs.
+        /// <br/>• Writing to a span after a resize has occurred might overwrite memory belonging to another component, causing severe bugs.
         /// </remarks>
         /// <returns>A <see cref="Span{T}"/> pointing to the current active elements.</returns>
         public Span<T> AsSpanUnsafe() => new(_items, 0, _size);
@@ -138,6 +174,10 @@ namespace RCi.Toolbox.Collections
         /// <returns>A <see cref="ReadOnlySpan{T}"/> pointing to the current active elements.</returns>
         public ReadOnlySpan<T> AsReadOnlySpanUnsafe() => new(_items, 0, _size);
 
+        /// <summary>
+        /// Gets or sets the total number of elements the internal data structure can hold without resizing.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown if capacity is set to a value less than <see cref="Count"/>.</exception>
         public int Capacity
         {
             get => _items.Length;
@@ -178,6 +218,9 @@ namespace RCi.Toolbox.Collections
 
         #region // IEnumerable<T>
 
+        /// <summary>
+        /// Zero-allocation struct enumerator for <see cref="RentedList{T}"/>.
+        /// </summary>
         public struct Enumerator : IEnumerator<T>
         {
             private readonly RentedList<T> _list;
@@ -243,7 +286,10 @@ namespace RCi.Toolbox.Collections
             }
         }
 
-        public Enumerator GetEnumerator() => new Enumerator(this);
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection without allocating on the heap.
+        /// </summary>
+        public Enumerator GetEnumerator() => new(this);
 
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
 
@@ -253,6 +299,9 @@ namespace RCi.Toolbox.Collections
 
         #region // ICollection<T>
 
+        /// <summary>
+        /// Adds an object to the end of the <see cref="RentedList{T}"/>.
+        /// </summary>
         public void Add(T item)
         {
             _version++;
@@ -278,6 +327,13 @@ namespace RCi.Toolbox.Collections
             _items[size] = item;
         }
 
+        /// <summary>
+        /// Removes all elements from the <see cref="RentedList{T}"/>.
+        /// </summary>
+        /// <remarks>
+        /// This sets the <see cref="Count"/> to 0 and clears references to allow garbage collection,
+        /// but it does <strong>not</strong> change the <see cref="Capacity"/> or return the underlying array to the pool.
+        /// </remarks>
         public void Clear()
         {
             _version++;
@@ -308,6 +364,9 @@ namespace RCi.Toolbox.Collections
             return false;
         }
 
+        /// <summary>
+        /// Gets the number of elements actually contained in the <see cref="RentedList{T}"/>.
+        /// </summary>
         public int Count => _size;
 
         public bool IsReadOnly => false;
@@ -355,6 +414,11 @@ namespace RCi.Toolbox.Collections
             _version++;
         }
 
+        /// <summary>
+        /// Gets or sets the element at the specified index.
+        /// </summary>
+        /// <param name="index">The zero-based index of the element to get or set.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown if the index is outside the logical <see cref="Count"/>.</exception>
         public T this[int index]
         {
             get
@@ -378,6 +442,9 @@ namespace RCi.Toolbox.Collections
 
         #endregion
 
+        /// <summary>
+        /// Adds the elements of the specified collection to the end of the <see cref="RentedList{T}"/>.
+        /// </summary>
         public void AddRange(IEnumerable<T> collection)
         {
             if (collection is ICollection<T> c)
@@ -405,11 +472,15 @@ namespace RCi.Toolbox.Collections
         }
 
         /// <summary>
-        /// WARNING: DO NOT STORE EXPOSED UNDERLYING ARRAY REFERENCE!
-        /// If the reference of the exposed underlying array will be stored somewhere,
-        /// the <see cref="RentedList{T}"/> will not know about this and will return rented array it to the pool.
-        /// Note that underlying array's length might be larger.
+        /// Executes a delegate against the raw underlying array.
         /// </summary>
+        /// <remarks>
+        /// <strong>WARNING: DO NOT STORE EXPOSED UNDERLYING ARRAY REFERENCE!</strong>
+        /// <br/>If the reference of the exposed underlying array is stored somewhere, the <see cref="RentedList{T}"/> will not know about this.
+        /// If the list resizes, the array will be returned to the pool, and the stored reference will become a dangling pointer to pooled memory.
+        /// <br/>Note that the underlying array's length is likely larger than the logical <see cref="Count"/> of this collection.
+        /// </remarks>
+        /// <param name="action">The action to execute against the raw array.</param>
         public void UnsafeAccessUnderlyingArray(Action<T[]> action) => action(_items);
     }
 
@@ -417,8 +488,14 @@ namespace RCi.Toolbox.Collections
     {
         extension<T>(IEnumerable<T> items)
         {
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from the specified pool and populates it with elements from the sequence.
+            /// </summary>
             public RentedList<T> ToRentedList(ArrayPool<T> pool) => new(items, pool);
 
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from <see cref="ArrayPool{T}.Shared"/> and populates it with elements from the sequence.
+            /// </summary>
             public RentedList<T> ToRentedList() => items.ToRentedList(ArrayPool<T>.Shared);
         }
     }
