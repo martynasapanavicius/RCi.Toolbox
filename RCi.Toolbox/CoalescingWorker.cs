@@ -59,13 +59,13 @@ namespace RCi.Toolbox
         /// A tuple where <c>Success</c> indicates if the request was accepted,
         /// and <c>WasCoalesced</c> indicates if it was merged into a pending job.
         /// </returns>
-        ValueTask<(bool Success, bool WasCoalesced)> ScheduleAsync();
+        Task<(bool Success, bool WasCoalesced)> ScheduleAsync();
 
         /// <inheritdoc cref="Schedule(out bool)" />
-        ValueTask<(bool Success, bool WasCoalesced)> ScheduleAsync(TimeSpan waitBeforeScheduling);
+        Task<(bool Success, bool WasCoalesced)> ScheduleAsync(TimeSpan waitBeforeScheduling);
 
         /// <inheritdoc cref="Schedule(out bool)" />
-        ValueTask<(bool Success, bool WasCoalesced)> ScheduleAsync(
+        Task<(bool Success, bool WasCoalesced)> ScheduleAsync(
             TimeSpan waitBeforeScheduling,
             CancellationToken ct
         );
@@ -312,13 +312,13 @@ namespace RCi.Toolbox
             return ScheduleRaw(ctMerged, out wasCoalesced);
         }
 
-        private ValueTask<(bool Success, bool WasCoalesced)> ScheduleInternalAsync()
+        private Task<(bool Success, bool WasCoalesced)> ScheduleInternalAsync()
         {
             var success = ScheduleInternal(out var wasCoalesced);
-            return ValueTask.FromResult((success, wasCoalesced));
+            return Task.FromResult((success, wasCoalesced));
         }
 
-        private async ValueTask<(bool Success, bool WasCoalesced)> ScheduleInternalAsync(
+        private async Task<(bool Success, bool WasCoalesced)> ScheduleInternalAsync(
             TimeSpan waitBeforeScheduling
         )
         {
@@ -340,7 +340,7 @@ namespace RCi.Toolbox
             return (success, wasCoalesced);
         }
 
-        private async ValueTask<(
+        private async Task<(
             bool Success,
             bool WasCoalesced
         )> ScheduleInternalWithCancellationTokenAsync(
@@ -390,14 +390,13 @@ namespace RCi.Toolbox
         public bool Schedule(TimeSpan waitBeforeScheduling, CancellationToken ct) =>
             ScheduleInternalWithCancellationToken(waitBeforeScheduling, ct, out _);
 
-        public ValueTask<(bool Success, bool WasCoalesced)> ScheduleAsync() =>
-            ScheduleInternalAsync();
+        public Task<(bool Success, bool WasCoalesced)> ScheduleAsync() => ScheduleInternalAsync();
 
-        public ValueTask<(bool Success, bool WasCoalesced)> ScheduleAsync(
+        public Task<(bool Success, bool WasCoalesced)> ScheduleAsync(
             TimeSpan waitBeforeScheduling
         ) => ScheduleInternalAsync(waitBeforeScheduling);
 
-        public ValueTask<(bool Success, bool WasCoalesced)> ScheduleAsync(
+        public Task<(bool Success, bool WasCoalesced)> ScheduleAsync(
             TimeSpan waitBeforeScheduling,
             CancellationToken ct
         ) => ScheduleInternalWithCancellationTokenAsync(waitBeforeScheduling, ct);
