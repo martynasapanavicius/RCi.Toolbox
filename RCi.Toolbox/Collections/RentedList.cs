@@ -20,7 +20,30 @@ namespace RCi.Toolbox.Collections
     /// </summary>
     public sealed class RentedList<T> : IDisposable, IList<T>, IReadOnlyList<T>
     {
-        private const int DefaultCapacity = 4;
+        /// <summary>
+        /// The default initial capacity for the <see cref="RentedList{T}"/>.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="List{T}"/>, where the default capacity is kept minimal (typically 4) to reduce heap allocation costs,
+        /// renting from an <see cref="ArrayPool{T}"/> is an <c>O(1)</c> operation regardless of the requested size.
+        /// <br/>
+        /// However, defaulting to a massive size (e.g., 40,000) risks rapid pool bucket exhaustion. If a bucket is drained,
+        /// the pool falls back to allocating large arrays on the heap, completely defeating the purpose of the pool.
+        /// <br/>
+        /// Setting the default capacity to 256 hits the optimal balance:
+        /// <list type="bullet">
+        ///     <item>
+        ///         <description><strong>Avoids resize thrashing:</strong> Starting at 256 skips 6 expensive
+        ///         reallocation and copy cycles (4 → 8 → 16 → 32 → 64 → 128 → 256).</description>
+        ///     </item>
+        ///     <item>
+        ///         <description><strong>Harmless to the pool:</strong> An array of 256 elements is small enough
+        ///         that even if the pool bucket is temporarily exhausted, the resulting fallback heap allocation
+        ///         is trivial and easily collected by Gen 0 GC.</description>
+        ///     </item>
+        /// </list>
+        /// </remarks>
+        private const int DefaultCapacity = 256;
 
         private readonly ArrayPool<T> _pool;
         private readonly bool _clearOnReturn;
@@ -35,9 +58,9 @@ namespace RCi.Toolbox.Collections
         /// <param name="initCapacity">The number of elements that the new list can initially store.</param>
         /// <param name="pool">The pool to rent the underlying array from.</param>
         /// <param name="clearOnReturn">
-        /// If <c>true</c>, zeroes out rented memory when it is returned to the pool, this is useful when dealing with sensitive data.
-        /// WARNING: If rented array holds reference types and is not cleared on return, the objects will be dangling in the array
-        /// and GC won't be able to collect them (unless array is re-rented and references overriden, which is undeterministic).
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         public RentedList(int initCapacity, ArrayPool<T> pool, bool clearOnReturn)
         {
@@ -52,9 +75,9 @@ namespace RCi.Toolbox.Collections
         /// </summary>
         /// <param name="initCapacity">The number of elements that the new list can initially store.</param>
         /// <param name="clearOnReturn">
-        /// If <c>true</c>, zeroes out rented memory when it is returned to the pool, this is useful when dealing with sensitive data.
-        /// WARNING: If rented array holds reference types and is not cleared on return, the objects will be dangling in the array
-        /// and GC won't be able to collect them (unless array is re-rented and references overriden, which is undeterministic).
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         public RentedList(int initCapacity, bool clearOnReturn)
             : this(initCapacity, ArrayPool<T>.Shared, clearOnReturn) { }
@@ -65,9 +88,9 @@ namespace RCi.Toolbox.Collections
         /// </summary>
         /// <param name="pool">The pool to rent the underlying array from.</param>
         /// <param name="clearOnReturn">
-        /// If <c>true</c>, zeroes out rented memory when it is returned to the pool, this is useful when dealing with sensitive data.
-        /// WARNING: If rented array holds reference types and is not cleared on return, the objects will be dangling in the array
-        /// and GC won't be able to collect them (unless array is re-rented and references overriden, which is undeterministic).
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         public RentedList(ArrayPool<T> pool, bool clearOnReturn)
             : this(DefaultCapacity, pool, clearOnReturn) { }
@@ -77,9 +100,9 @@ namespace RCi.Toolbox.Collections
         /// and has the default initial capacity, using <see cref="ArrayPool{T}.Shared"/>.
         /// </summary>
         /// <param name="clearOnReturn">
-        /// If <c>true</c>, zeroes out rented memory when it is returned to the pool, this is useful when dealing with sensitive data.
-        /// WARNING: If rented array holds reference types and is not cleared on return, the objects will be dangling in the array
-        /// and GC won't be able to collect them (unless array is re-rented and references overriden, which is undeterministic).
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         public RentedList(bool clearOnReturn)
             : this(DefaultCapacity, ArrayPool<T>.Shared, clearOnReturn) { }
@@ -91,9 +114,9 @@ namespace RCi.Toolbox.Collections
         /// <param name="initItems">The collection whose elements are copied into the new list.</param>
         /// <param name="pool">The pool to rent the underlying array from.</param>
         /// <param name="clearOnReturn">
-        /// If <c>true</c>, zeroes out rented memory when it is returned to the pool, this is useful when dealing with sensitive data.
-        /// WARNING: If rented array holds reference types and is not cleared on return, the objects will be dangling in the array
-        /// and GC won't be able to collect them (unless array is re-rented and references overriden, which is undeterministic).
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         public RentedList(IEnumerable<T> initItems, ArrayPool<T> pool, bool clearOnReturn)
         {
@@ -102,22 +125,39 @@ namespace RCi.Toolbox.Collections
             switch (initItems)
             {
                 case T[] array:
-                    _items = pool.Rent(array.Length);
-                    array.CopyTo(_items.AsSpan());
-                    _size = array.Length;
+                    {
+                        var length = array.Length;
+                        _items = pool.Rent(length);
+                        _size = length;
+                        if (length > 0)
+                        {
+                            array.AsSpan().CopyTo(_items.AsSpan(0, length));
+                        }
+                    }
                     break;
 
                 case ImmutableArray<T> immutableArray:
-                    _items = pool.Rent(immutableArray.Length);
-                    immutableArray.CopyTo(_items.AsSpan());
-                    _size = immutableArray.Length;
+                    {
+                        var length = immutableArray.Length;
+                        _items = pool.Rent(length);
+                        _size = length;
+                        if (length > 0)
+                        {
+                            immutableArray.AsSpan().CopyTo(_items.AsSpan(0, length));
+                        }
+                    }
                     break;
 
                 case ICollection<T> collection:
-                    var length = collection.Count;
-                    _items = pool.Rent(collection.Count);
-                    collection.CopyTo(_items, 0);
-                    _size = length;
+                    {
+                        var length = collection.Count;
+                        _items = pool.Rent(collection.Count);
+                        _size = length;
+                        if (length > 0)
+                        {
+                            collection.CopyTo(_items, 0);
+                        }
+                    }
                     break;
 
                 default:
@@ -136,9 +176,9 @@ namespace RCi.Toolbox.Collections
         /// </summary>
         /// <param name="initItems">The collection whose elements are copied into the new list.</param>
         /// <param name="clearOnReturn">
-        /// If <c>true</c>, zeroes out rented memory when it is returned to the pool, this is useful when dealing with sensitive data.
-        /// WARNING: If rented array holds reference types and is not cleared on return, the objects will be dangling in the array
-        /// and GC won't be able to collect them (unless array is re-rented and references overriden, which is undeterministic).
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         public RentedList(IEnumerable<T> initItems, bool clearOnReturn)
             : this(initItems, ArrayPool<T>.Shared, clearOnReturn) { }
@@ -160,7 +200,7 @@ namespace RCi.Toolbox.Collections
             {
                 return;
             }
-            if (disposing && _items.Length != 0)
+            if (disposing)
             {
                 _pool.Return(_items, _clearOnReturn);
             }
@@ -227,7 +267,7 @@ namespace RCi.Toolbox.Collections
                 {
                     throw new ArgumentOutOfRangeException(nameof(value));
                 }
-                if (value != _items.Length && value > 0)
+                if (value != _items.Length)
                 {
                     var newItems = _pool.Rent(value);
                     if (_size > 0)
@@ -370,19 +410,16 @@ namespace RCi.Toolbox.Collections
         /// Removes all elements from the <see cref="RentedList{T}"/>.
         /// </summary>
         /// <remarks>
-        /// This sets the <see cref="Count"/> to 0 and clears references to allow garbage collection,
-        /// but it does <strong>not</strong> change the <see cref="Capacity"/> or return the underlying array to the pool.
+        /// This sets the <see cref="Count"/> to 0, but it does <strong>not</strong>
+        /// change the <see cref="Capacity"/> or return the underlying array to the pool.
         /// </remarks>
         public void Clear()
         {
             _version++;
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            var size = _size;
+            if (size > 0)
             {
-                var size = _size;
-                if (size > 0)
-                {
-                    Array.Clear(_items, 0, size);
-                }
+                Array.Clear(_items, 0, size);
             }
             _size = 0;
         }
@@ -446,10 +483,7 @@ namespace RCi.Toolbox.Collections
             {
                 Array.Copy(_items, index + 1, _items, index, _size - index);
             }
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-            {
-                _items[_size] = default!;
-            }
+            _items[_size] = default!;
             _version++;
         }
 
