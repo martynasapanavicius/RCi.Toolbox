@@ -24,7 +24,7 @@ namespace RCi.Toolbox.Tests.Collections
 
         private static RentedArray<int> CreateTestRentedArray()
         {
-            var array = new RentedArray<int>(_originalArray.Length, false);
+            var array = new RentedArray<int>(_originalArray.Length, false, false);
             for (var i = 0; i < _originalArray.Length; i++)
             {
                 array[i] = _originalArray[i];
@@ -35,7 +35,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void CtorEmpty()
         {
-            using var empty = new RentedArray<int>(0);
+            using var empty = new RentedArray<int>(0, false, false);
             Assert.That(empty.Length, Is.EqualTo(0));
         }
 
@@ -109,7 +109,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void GetEnumerator_CanHandleNulls()
         {
-            using var actual = new RentedArray<object?>([null, null, null]);
+            using var actual = new RentedArray<object?>([null, null, null], true);
             using var enumerator = actual.GetEnumerator();
             while (enumerator.MoveNext())
             {
@@ -187,7 +187,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedArray_Array()
         {
             var original = _originalArray.ToArray();
-            using var actual = original.ToRentedArray();
+            using var actual = original.ToRentedArray(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             for (var i = 0; i < original.Length; i++)
             {
@@ -200,7 +200,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedArray_ImmutableArray()
         {
             var original = _originalArray.ToImmutableArray();
-            using var actual = original.ToRentedArray();
+            using var actual = original.ToRentedArray(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             for (var i = 0; i < original.Length; i++)
             {
@@ -213,7 +213,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedArray_IList()
         {
             var original = _originalArray.ToList();
-            using var actual = original.ToRentedArray();
+            using var actual = original.ToRentedArray(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             for (var i = 0; i < original.Count; i++)
             {
@@ -226,7 +226,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedArray_IEnumerable()
         {
             var original = GetStream(_originalArray);
-            using var actual = original.ToRentedArray();
+            using var actual = original.ToRentedArray(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             return;
 
@@ -242,7 +242,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void UnsafeAccessUnderlyingArray()
         {
-            using var actual = new RentedArray<int>(_originalArray.Length, false);
+            using var actual = new RentedArray<int>(_originalArray.Length, false, false);
             actual.UnsafeAccessUnderlyingArray(x => _originalArray.CopyTo(x, 0));
             Assert.That(actual.SequenceEqual(_originalArray), Is.True);
         }
@@ -256,7 +256,8 @@ namespace RCi.Toolbox.Tests.Collections
             using var actual = RentedArray.UnsafeCreateFromExisting(
                 length,
                 manuallyRentedArray,
-                ArrayPool<int>.Shared
+                ArrayPool<int>.Shared,
+                false
             );
             Assert.That(
                 manuallyRentedArray.AsSpan()[..length].ToArray(),
@@ -275,7 +276,7 @@ namespace RCi.Toolbox.Tests.Collections
             ArrayPool<int>? pool = null;
             try
             {
-                using (var actual = new RentedArray<int>(_originalArray.Length))
+                using (var actual = new RentedArray<int>(_originalArray.Length, false, false))
                 {
                     // extract underlying array
                     (underlying, pool) = actual.UnsafeDetachUnderlyingArray();

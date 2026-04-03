@@ -23,7 +23,7 @@ namespace RCi.Toolbox.Tests.Collections
 
         private static RentedList<int> CreateTestRentedList()
         {
-            var list = new RentedList<int>(_originalArray.Length);
+            var list = new RentedList<int>(_originalArray.Length, false);
             foreach (var item in _originalArray)
             {
                 list.Add(item);
@@ -59,7 +59,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void Grow()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
             var capacity = actual.Capacity;
             const int MAX_ADDITIONS = 1000;
             for (var i = 0; i < MAX_ADDITIONS; i++)
@@ -92,7 +92,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void GetEnumerator_CanHandleNulls()
         {
-            using var actual = new RentedList<object?>([null, null, null]);
+            using var actual = new RentedList<object?>([null, null, null], true);
             using var enumerator = actual.GetEnumerator();
             while (enumerator.MoveNext())
             {
@@ -169,7 +169,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void Add()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
 
             actual.Add(420);
             Assert.That(actual.SequenceEqual([420]), Is.True);
@@ -184,7 +184,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void Remove()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
 
             actual.Add(420);
             actual.Add(1337);
@@ -207,7 +207,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void Insert()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
 
             actual.Add(420);
             actual.Add(1337);
@@ -233,7 +233,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void RemoveAt()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
 
             actual.Add(420);
             actual.Add(1337);
@@ -256,7 +256,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void AddRange_ICollection()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
 
             actual.AddRange([11, 22, 33]);
             Assert.That(actual.SequenceEqual([11, 22, 33]), Is.True);
@@ -268,7 +268,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void AddRange_ICollection_Grow()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
             var array = Enumerable.Range(0, 100).ToArray();
 
             actual.AddRange(array);
@@ -278,7 +278,7 @@ namespace RCi.Toolbox.Tests.Collections
         [Test]
         public static void AddRange_IEnumerable()
         {
-            using var actual = new RentedList<int>();
+            using var actual = new RentedList<int>(false);
             var array = Enumerable.Range(0, 100).ToArray();
 
             actual.AddRange(array.Where(x => x > -1));
@@ -289,7 +289,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedList_Array()
         {
             var original = _originalArray.ToArray();
-            using var actual = original.ToRentedList();
+            using var actual = original.ToRentedList(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             for (var i = 0; i < original.Length; i++)
             {
@@ -302,7 +302,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedList_ImmutableArray()
         {
             var original = _originalArray.ToImmutableArray();
-            using var actual = original.ToRentedList();
+            using var actual = original.ToRentedList(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             for (var i = 0; i < original.Length; i++)
             {
@@ -315,7 +315,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedList_IList()
         {
             var original = _originalArray.ToList();
-            using var actual = original.ToRentedList();
+            using var actual = original.ToRentedList(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             for (var i = 0; i < original.Count; i++)
             {
@@ -328,7 +328,7 @@ namespace RCi.Toolbox.Tests.Collections
         public static void ToRentedList_IEnumerable()
         {
             var original = GetStream(_originalArray);
-            using var actual = original.ToRentedList();
+            using var actual = original.ToRentedList(false);
             Assert.That(actual.SequenceEqual(_originalArray));
             return;
 
