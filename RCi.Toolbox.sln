@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RCi.Toolbox", "RCi.Toolbox\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RCi.Toolbox.Tests", "RCi.Toolbox.Tests\RCi.Toolbox.Tests.csproj", "{9B9B7902-1222-47C7-82F5-5E071B39605A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RCi.Toolbox.Benchmarks", "RCi.Toolbox.Benchmarks\RCi.Toolbox.Benchmarks.csproj", "{E9947246-6BEC-467F-B28C-D5C07A5073FF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{9B9B7902-1222-47C7-82F5-5E071B39605A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9B9B7902-1222-47C7-82F5-5E071B39605A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9B9B7902-1222-47C7-82F5-5E071B39605A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9947246-6BEC-467F-B28C-D5C07A5073FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9947246-6BEC-467F-B28C-D5C07A5073FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9947246-6BEC-467F-B28C-D5C07A5073FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9947246-6BEC-467F-B28C-D5C07A5073FF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
