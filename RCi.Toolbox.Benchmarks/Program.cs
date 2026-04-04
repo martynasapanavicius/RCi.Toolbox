@@ -6,7 +6,8 @@ namespace RCi.Toolbox.Benchmarks
     {
         public static void Main(string[] args)
         {
-            _ = BenchmarkRunner.Run(typeof(Program).Assembly);
+            BenchmarkRunner.Run<ArrayAllocationBenchmark>();
+            BenchmarkRunner.Run<JobQueueBenchmark>();
         }
     }
 }
