@@ -3,6 +3,13 @@ Some useful tools.
 
 # Release notes
 
+- Version 2.0.2 - 2026-04-05
+  - Added `RentedArray<T>`
+  - Added `RentedList<T>`
+  - Added `TimeProvider` support for `SleepExtensions`
+  - Added `JobQueueBenchmark`
+  - Added `RentedArrayBenchmark`
+
 - Version 2.0.1 - 2026-04-02
   - Added missing `SleepExtensions` methods
   - Fixed `CoalescingWorkerParameters.Name` naming
