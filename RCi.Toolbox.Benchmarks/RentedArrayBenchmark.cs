@@ -90,7 +90,7 @@ BenchmarkDotNet v0.15.8
 namespace RCi.Toolbox.Benchmarks
 {
     [MemoryDiagnoser]
-    public unsafe class ArrayAllocationBenchmark
+    public unsafe class RentedArrayBenchmark
     {
         [Params(0, 1, 10, 100, 200, 500, 1_000, 10_000, 100_000)]
         public int ArraySize;
