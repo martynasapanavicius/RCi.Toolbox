@@ -5,7 +5,8 @@ Some useful tools.
 
 - Version 2.0.3 - 2026-05-11
   - `SyncBoxExtensions` bugfix
-  - 
+
+
 - Version 2.0.2 - 2026-04-05
   - Added `RentedArray<T>`
   - Added `RentedList<T>`
@@ -13,9 +14,11 @@ Some useful tools.
   - Added `JobQueueBenchmark`
   - Added `RentedArrayBenchmark`
 
+
 - Version 2.0.1 - 2026-04-02
   - Added missing `SleepExtensions` methods
   - Fixed `CoalescingWorkerParameters.Name` naming
+
 
 - Version 2.0.0 - 2026-04-01
   - Bumped to target framework to `net10.0`
@@ -25,6 +28,7 @@ Some useful tools.
   - Added `AtomicGate`
   - Updated `JobQueue` (fixed rare race conditions)
   - Added `CoalescingWorker`
+
 
 - Version 1.0.0 - 2025-11-03
   - Target framework `net8.0`
