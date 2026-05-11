@@ -3,6 +3,9 @@ Some useful tools.
 
 # Release notes
 
+- Version 2.0.3 - 2026-05-11
+  - `SyncBoxExtensions` bugfix
+  - 
 - Version 2.0.2 - 2026-04-05
   - Added `RentedArray<T>`
   - Added `RentedList<T>`

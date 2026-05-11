@@ -272,7 +272,7 @@ namespace RCi.Toolbox.Boxes
                 SyncBoxWaitForDelegate<T> isDone,
                 TimeSpan timeout,
                 CancellationToken ct
-            ) => box.WaitFor(isDone, timeout, TimeProvider.System, CancellationToken.None);
+            ) => box.WaitFor(isDone, timeout, TimeProvider.System, ct);
 
             public bool WaitFor(SyncBoxWaitForDelegate<T> isDone, TimeSpan timeout) =>
                 box.WaitFor(isDone, timeout, TimeProvider.System, CancellationToken.None);
