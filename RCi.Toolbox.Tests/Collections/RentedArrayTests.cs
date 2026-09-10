@@ -296,5 +296,40 @@ namespace RCi.Toolbox.Tests.Collections
                 }
             }
         }
+
+        [Test]
+        public static void NullValidation()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedArray<int>(10, null!, false, false)
+            );
+            Assert.Throws<ArgumentNullException>(() => _ = new RentedArray<int>(null!, false));
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedArray<int>(null!, ArrayPool<int>.Shared, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedArray<int>([1, 2, 3], null!, false)
+            );
+
+            IEnumerable<int> nullEnumerable = null!;
+            Assert.Throws<ArgumentNullException>(() => nullEnumerable.ToRentedArray(false));
+            Assert.Throws<ArgumentNullException>(() =>
+                nullEnumerable.ToRentedArray(ArrayPool<int>.Shared, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                new[] { 1, 2, 3 }.ToRentedArray(null!, false)
+            );
+        }
+
+        [Test]
+        public static void Ctor_NegativeLength_Throws()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _ = new RentedArray<int>(-1, false, false)
+            );
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _ = new RentedArray<int>(-1, ArrayPool<int>.Shared, false, false)
+            );
+        }
     }
 }

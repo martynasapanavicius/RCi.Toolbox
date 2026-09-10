@@ -41,6 +41,8 @@ namespace RCi.Toolbox.Collections
 
         private RentedArray(int length, ArrayPool<T> pool, T[] rented, bool clearOnReturn)
         {
+            ArgumentNullException.ThrowIfNull(pool);
+            ArgumentNullException.ThrowIfNull(rented);
             ArgumentOutOfRangeException.ThrowIfLessThan(length, 0);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(length, rented.Length);
             _pool = pool;
@@ -61,9 +63,11 @@ namespace RCi.Toolbox.Collections
         /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="length"/> is less than 0.</exception>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="pool"/> is <c>null</c>.</exception>
         public RentedArray(int length, ArrayPool<T> pool, bool clearOnInit, bool clearOnReturn)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(length, 0);
+            ArgumentNullException.ThrowIfNull(pool);
             _pool = pool;
             _clearOnReturn = clearOnReturn;
             Length = length;
@@ -97,8 +101,11 @@ namespace RCi.Toolbox.Collections
         /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
         /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="items"/> or <paramref name="pool"/> is <c>null</c>.</exception>
         public RentedArray(IEnumerable<T> items, ArrayPool<T> pool, bool clearOnReturn)
         {
+            ArgumentNullException.ThrowIfNull(items);
+            ArgumentNullException.ThrowIfNull(pool);
             _pool = pool;
             _clearOnReturn = clearOnReturn;
             switch (items)
