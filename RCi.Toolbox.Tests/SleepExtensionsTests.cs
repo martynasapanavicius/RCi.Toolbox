@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Time.Testing;
@@ -131,6 +131,14 @@ namespace RCi.Toolbox.Tests
 
             // Assert
             Assert.True(result); // Returns true on completion
+        }
+
+        [Test]
+        public static void Sleep_SystemProvider_NoneToken_SleepsSuccessfully()
+        {
+            // verify hot-path non-cancellable token branch returns true
+            var slept = TimeSpan.FromMilliseconds(1).Sleep(CancellationToken.None);
+            Assert.True(slept);
         }
     }
 }

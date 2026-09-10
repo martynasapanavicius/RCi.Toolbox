@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -67,6 +67,14 @@ namespace RCi.Toolbox
                 // hot path: use OS-level wait handle
                 if (ReferenceEquals(timeProvider, TimeProvider.System))
                 {
+                    // if token cannot be cancelled (such as CancellationToken.None),
+                    // avoid allocating a kernel WaitHandle by falling back directly to Thread.Sleep
+                    if (!ct.CanBeCanceled)
+                    {
+                        Thread.Sleep(delay);
+                        return true;
+                    }
+
                     try
                     {
                         return !ct.WaitHandle.WaitOne(delay);
