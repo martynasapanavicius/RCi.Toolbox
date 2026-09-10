@@ -124,7 +124,7 @@ namespace RCi.Toolbox.Collections
 
                 case ImmutableArray<T> immutableArray:
                     {
-                        var length = immutableArray.Length;
+                        var length = immutableArray.IsDefault ? 0 : immutableArray.Length;
                         Length = length;
                         _array = pool.Rent(length);
                         if (length > 0)
