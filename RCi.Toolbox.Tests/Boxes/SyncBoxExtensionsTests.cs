@@ -478,6 +478,54 @@ namespace RCi.Toolbox.Tests.Boxes
             Assert.Throws<ArgumentNullException>(() =>
                 box.WaitFor(_ => true, TimeSpan.FromSeconds(1), null!, CancellationToken.None)
             );
+
+            // Null checks for new overloads (isDone, timeout, timeProvider)
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await box.WaitForAsync(null!, TimeSpan.FromSeconds(1), TimeProvider.System)
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await box.WaitForAsync(_ => true, TimeSpan.FromSeconds(1), null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.WaitFor(null!, TimeSpan.FromSeconds(1), TimeProvider.System)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.WaitFor(_ => true, TimeSpan.FromSeconds(1), null!)
+            );
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public static async Task WaitForAsync_WithTimeProvider_ConvenienceOverload(bool useDeferred)
+        {
+            ISyncBox<int> box = useDeferred ? new SyncBoxDeferred<int>(0) : new SyncBox<int>(0);
+            var fakeTime = new FakeTimeProvider();
+
+            var waitTask = box.WaitForAsync(v => v == 5, TimeSpan.FromSeconds(10), fakeTime);
+            Assert.That(waitTask.IsCompleted, Is.False);
+
+            box.Value = 5;
+
+            var result = await waitTask;
+            Assert.That(result, Is.True);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public static async Task WaitFor_WithTimeProvider_ConvenienceOverload(bool useDeferred)
+        {
+            ISyncBox<int> box = useDeferred ? new SyncBoxDeferred<int>(0) : new SyncBox<int>(0);
+            var fakeTime = new FakeTimeProvider();
+
+            var waitTask = Task.Run(() =>
+                box.WaitFor(v => v == 5, TimeSpan.FromSeconds(10), fakeTime)
+            );
+            await Task.Delay(20);
+
+            box.Value = 5;
+
+            var result = await waitTask;
+            Assert.That(result, Is.True);
         }
     }
 }

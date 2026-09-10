@@ -287,6 +287,12 @@ namespace RCi.Toolbox.Boxes
             public Task<bool> WaitForAsync(
                 SyncBoxWaitForDelegate<T> isDone,
                 TimeSpan timeout,
+                TimeProvider timeProvider
+            ) => box.WaitForAsync(isDone, timeout, timeProvider, CancellationToken.None);
+
+            public Task<bool> WaitForAsync(
+                SyncBoxWaitForDelegate<T> isDone,
+                TimeSpan timeout,
                 CancellationToken ct
             ) => box.WaitForAsync(isDone, timeout, TimeProvider.System, ct);
 
@@ -305,6 +311,12 @@ namespace RCi.Toolbox.Boxes
                     TimeProvider.System,
                     CancellationToken.None
                 );
+
+            public bool WaitFor(
+                SyncBoxWaitForDelegate<T> isDone,
+                TimeSpan timeout,
+                TimeProvider timeProvider
+            ) => box.WaitFor(isDone, timeout, timeProvider, CancellationToken.None);
 
             public bool WaitFor(
                 SyncBoxWaitForDelegate<T> isDone,
