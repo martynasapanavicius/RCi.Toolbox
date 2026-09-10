@@ -701,5 +701,81 @@ namespace RCi.Toolbox.Tests
             Assert.That(asyncGenericResult.Exception, Is.Null);
             Assert.That(asyncGenericResult.Result, Is.EqualTo(0));
         }
+
+        [Test]
+        public static void Ctor_NullParameters_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new JobQueue(null!));
+        }
+
+        [Test]
+        public static void Post_NullValidation()
+        {
+            using var jobQueue = new JobQueue();
+
+            // Post(Action<CancellationToken>, Action<JobResult>)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post(null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post(_ => { }, null!));
+
+            // Post(Action<CancellationToken>)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post(null!));
+
+            // Extension Post(Action, Action<JobResult>)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post((Action)null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post(() => { }, null!));
+
+            // Extension Post(Action)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post((Action)null!));
+
+            // Extension Post<T>(Func<CancellationToken, T>, Action<JobResult<T>>)
+            Assert.Throws<ArgumentNullException>(() =>
+                jobQueue.Post((Func<CancellationToken, int>)null!, _ => { })
+            );
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post(_ => 42, null!));
+
+            // Extension Post<T>(Func<T>, Action<JobResult<T>>)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post((Func<int>)null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Post(() => 42, null!));
+        }
+
+        [Test]
+        public static void Send_NullValidation()
+        {
+            using var jobQueue = new JobQueue();
+
+            // Send(Action<CancellationToken>)
+            Assert.Throws<ArgumentNullException>(() =>
+                jobQueue.Send((Action<CancellationToken>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                jobQueue.Send((Action<CancellationToken>)null!, out _)
+            );
+
+            // Send(Action)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Send((Action)null!));
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Send((Action)null!, out _));
+
+            // Send<T>(Func<CancellationToken, T>)
+            Assert.Throws<ArgumentNullException>(() =>
+                jobQueue.Send((Func<CancellationToken, int>)null!, out _)
+            );
+
+            // Send<T>(Func<T>)
+            Assert.Throws<ArgumentNullException>(() => jobQueue.Send((Func<int>)null!, out _));
+
+            // SendAsync
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await jobQueue.SendAsync((Action<CancellationToken>)null!)
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await jobQueue.SendAsync((Action)null!)
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await jobQueue.SendAsync((Func<CancellationToken, int>)null!)
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await jobQueue.SendAsync((Func<int>)null!)
+            );
+        }
     }
 }

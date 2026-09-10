@@ -240,6 +240,8 @@ namespace RCi.Toolbox
 
         public JobQueue(JobQueueParameters parameters)
         {
+            ArgumentNullException.ThrowIfNull(parameters);
+
             if (parameters.WorkerCount < 1)
             {
                 parameters = parameters with { WorkerCount = 1 };
@@ -493,11 +495,19 @@ namespace RCi.Toolbox
         }
 
         /// <inheritdoc />
-        public bool Post(Action<CancellationToken> job, Action<JobResult> onComplete) =>
-            Post(new JobQueueItem(job, onComplete));
+        public bool Post(Action<CancellationToken> job, Action<JobResult> onComplete)
+        {
+            ArgumentNullException.ThrowIfNull(job);
+            ArgumentNullException.ThrowIfNull(onComplete);
+            return Post(new JobQueueItem(job, onComplete));
+        }
 
         /// <inheritdoc />
-        public bool Post(Action<CancellationToken> job) => Post(new JobQueueItem(job, null));
+        public bool Post(Action<CancellationToken> job)
+        {
+            ArgumentNullException.ThrowIfNull(job);
+            return Post(new JobQueueItem(job, null));
+        }
 
         /// <inheritdoc />
         public Task<bool> WaitForIdleAsync(
@@ -533,15 +543,25 @@ namespace RCi.Toolbox
         extension(IJobQueue jobQueue)
         {
             /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
-            public bool Post(Action job, Action<JobResult> onComplete) =>
-                jobQueue.Post(_ => job(), onComplete);
+            public bool Post(Action job, Action<JobResult> onComplete)
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                ArgumentNullException.ThrowIfNull(onComplete);
+                return jobQueue.Post(_ => job(), onComplete);
+            }
 
             /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
-            public bool Post(Action job) => jobQueue.Post(_ => job());
+            public bool Post(Action job)
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                return jobQueue.Post(_ => job());
+            }
 
             /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
             public bool Post<T>(Func<CancellationToken, T> job, Action<JobResult<T>> onComplete)
             {
+                ArgumentNullException.ThrowIfNull(job);
+                ArgumentNullException.ThrowIfNull(onComplete);
                 var result = default(T);
                 return jobQueue.Post(
                     ct => result = job(ct),
@@ -553,8 +573,12 @@ namespace RCi.Toolbox
             }
 
             /// <inheritdoc cref="IJobQueue.Post(Action{CancellationToken},Action{JobResult})" />
-            public bool Post<T>(Func<T> job, Action<JobResult<T>> onComplete) =>
-                jobQueue.Post(_ => job(), onComplete);
+            public bool Post<T>(Func<T> job, Action<JobResult<T>> onComplete)
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                ArgumentNullException.ThrowIfNull(onComplete);
+                return jobQueue.Post(_ => job(), onComplete);
+            }
 
             //
 
@@ -630,20 +654,24 @@ namespace RCi.Toolbox
 
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action job, out JobResult result) =>
-                jobQueue.Send(_ => job(), out result);
+                jobQueue.Send(job, Timeout.InfiniteTimeSpan, CancellationToken.None, out result);
 
             public bool Send(
                 Action job,
                 TimeSpan timeout,
                 CancellationToken ct,
                 out JobResult result
-            ) => jobQueue.Send(_ => job(), timeout, ct, out result);
+            )
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                return jobQueue.Send(_ => job(), timeout, ct, out result);
+            }
 
             public bool Send(Action job, TimeSpan timeout, out JobResult result) =>
-                jobQueue.Send(_ => job(), timeout, CancellationToken.None, out result);
+                jobQueue.Send(job, timeout, CancellationToken.None, out result);
 
             public bool Send(Action job, CancellationToken ct, out JobResult result) =>
-                jobQueue.Send(_ => job(), Timeout.InfiniteTimeSpan, ct, out result);
+                jobQueue.Send(job, Timeout.InfiniteTimeSpan, ct, out result);
 
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action<CancellationToken> job) => jobQueue.Send(job, out _);
@@ -662,6 +690,7 @@ namespace RCi.Toolbox
                 out JobResult<T> result
             )
             {
+                ArgumentNullException.ThrowIfNull(job);
                 var value = default(T);
                 var enqueued = jobQueue.Send(
                     c =>
@@ -690,20 +719,24 @@ namespace RCi.Toolbox
 
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send<T>(Func<T> job, out JobResult<T> result) =>
-                jobQueue.Send(_ => job(), out result);
+                jobQueue.Send(job, Timeout.InfiniteTimeSpan, CancellationToken.None, out result);
 
             public bool Send<T>(
                 Func<T> job,
                 TimeSpan timeout,
                 CancellationToken ct,
                 out JobResult<T> result
-            ) => jobQueue.Send(_ => job(), timeout, ct, out result);
+            )
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                return jobQueue.Send(_ => job(), timeout, ct, out result);
+            }
 
             public bool Send<T>(Func<T> job, TimeSpan timeout, out JobResult<T> result) =>
-                jobQueue.Send(_ => job(), timeout, CancellationToken.None, out result);
+                jobQueue.Send(job, timeout, CancellationToken.None, out result);
 
             public bool Send<T>(Func<T> job, CancellationToken ct, out JobResult<T> result) =>
-                jobQueue.Send(_ => job(), Timeout.InfiniteTimeSpan, ct, out result);
+                jobQueue.Send(job, Timeout.InfiniteTimeSpan, ct, out result);
 
             /// <summary>
             /// Asynchronously enqueues the job and returns a task that completes when execution finishes.
@@ -714,6 +747,7 @@ namespace RCi.Toolbox
                 CancellationToken ct
             )
             {
+                ArgumentNullException.ThrowIfNull(job);
                 var tcs = new TaskCompletionSource<JobResult<T>>(
                     TaskCreationOptions.RunContinuationsAsynchronously
                 );
@@ -794,16 +828,20 @@ namespace RCi.Toolbox
                 Func<T> job,
                 TimeSpan timeout,
                 CancellationToken ct
-            ) => jobQueue.SendAsync(_ => job(), timeout, ct);
+            )
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                return jobQueue.SendAsync(_ => job(), timeout, ct);
+            }
 
             public Task<JobResult<T>> SendAsync<T>(Func<T> job, TimeSpan timeout) =>
-                jobQueue.SendAsync(_ => job(), timeout, CancellationToken.None);
+                jobQueue.SendAsync(job, timeout, CancellationToken.None);
 
             public Task<JobResult<T>> SendAsync<T>(Func<T> job, CancellationToken ct) =>
-                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, ct);
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, ct);
 
             public Task<JobResult<T>> SendAsync<T>(Func<T> job) =>
-                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, CancellationToken.None);
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, CancellationToken.None);
 
             /// <summary>
             /// Asynchronously enqueues the job and returns a task that completes when execution finishes.
@@ -876,17 +914,20 @@ namespace RCi.Toolbox
             public Task<JobResult> SendAsync(Action<CancellationToken> job) =>
                 jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, CancellationToken.None);
 
-            public Task<JobResult> SendAsync(Action job, TimeSpan timeout, CancellationToken ct) =>
-                jobQueue.SendAsync(_ => job(), timeout, ct);
+            public Task<JobResult> SendAsync(Action job, TimeSpan timeout, CancellationToken ct)
+            {
+                ArgumentNullException.ThrowIfNull(job);
+                return jobQueue.SendAsync(_ => job(), timeout, ct);
+            }
 
             public Task<JobResult> SendAsync(Action job, TimeSpan timeout) =>
-                jobQueue.SendAsync(_ => job(), timeout, CancellationToken.None);
+                jobQueue.SendAsync(job, timeout, CancellationToken.None);
 
             public Task<JobResult> SendAsync(Action job, CancellationToken ct) =>
-                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, ct);
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, ct);
 
             public Task<JobResult> SendAsync(Action job) =>
-                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, CancellationToken.None);
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, CancellationToken.None);
 
             //
 
