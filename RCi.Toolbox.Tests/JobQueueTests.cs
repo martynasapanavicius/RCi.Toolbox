@@ -670,5 +670,36 @@ namespace RCi.Toolbox.Tests
                 jobQueue.Dispose();
             }
         }
+
+        [Test]
+        public static async Task Send_WhenCancelled_ReturnsCancelledResult()
+        {
+            using var jobQueue = new JobQueue();
+            jobQueue.Cancel();
+
+            // Synchronous Action Send
+            var success = jobQueue.Send(() => { }, out var syncResult);
+            Assert.That(success, Is.False);
+            Assert.That(syncResult.Cancelled, Is.True);
+            Assert.That(syncResult.Exception, Is.Null);
+
+            // Synchronous Func<T> Send
+            var successGeneric = jobQueue.Send(() => 42, out var syncGenericResult);
+            Assert.That(successGeneric, Is.False);
+            Assert.That(syncGenericResult.Cancelled, Is.True);
+            Assert.That(syncGenericResult.Exception, Is.Null);
+            Assert.That(syncGenericResult.Result, Is.EqualTo(0));
+
+            // Asynchronous Action SendAsync
+            var asyncResult = await jobQueue.SendAsync(() => { });
+            Assert.That(asyncResult.Cancelled, Is.True);
+            Assert.That(asyncResult.Exception, Is.Null);
+
+            // Asynchronous Func<T> SendAsync
+            var asyncGenericResult = await jobQueue.SendAsync(() => 42);
+            Assert.That(asyncGenericResult.Cancelled, Is.True);
+            Assert.That(asyncGenericResult.Exception, Is.Null);
+            Assert.That(asyncGenericResult.Result, Is.EqualTo(0));
+        }
     }
 }

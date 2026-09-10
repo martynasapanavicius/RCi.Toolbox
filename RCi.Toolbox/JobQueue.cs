@@ -592,27 +592,28 @@ namespace RCi.Toolbox
                         waiter.Set();
                     }
                 );
-                if (enqueued)
+                if (!enqueued)
                 {
-                    try
+                    result = new JobResult(true, null);
+                    return false;
+                }
+
+                try
+                {
+                    if (!waiter.Wait(timeout, ct))
                     {
-                        if (!waiter.Wait(timeout, ct))
-                        {
-                            result = new JobResult(
-                                ct.IsCancellationRequested,
-                                new TimeoutException()
-                            );
-                            return false;
-                        }
-                    }
-                    catch (OperationCanceledException oce)
-                    {
-                        result = new JobResult(true, oce);
+                        result = new JobResult(ct.IsCancellationRequested, new TimeoutException());
                         return false;
                     }
                 }
+                catch (OperationCanceledException oce)
+                {
+                    result = new JobResult(true, oce);
+                    return false;
+                }
+
                 result = resultOut;
-                return enqueued;
+                return true;
             }
 
             public bool Send(
