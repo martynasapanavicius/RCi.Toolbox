@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -21,6 +21,7 @@ namespace RCi.Toolbox.Boxes
 
         private readonly Channel<T> _eventChannel;
         private Task? _pumpTask;
+        private bool _isDisposed;
 
         /// <summary>
         /// Event handler to receive notifications when value was changed.
@@ -44,6 +45,12 @@ namespace RCi.Toolbox.Boxes
             {
                 lock (_lock)
                 {
+                    if (_isDisposed)
+                    {
+                        // reject mutating or restarting pump if the box has already been disposed
+                        return;
+                    }
+
                     if (_funcEquals(_value, value))
                     {
                         return;
@@ -86,6 +93,8 @@ namespace RCi.Toolbox.Boxes
             Task? taskToWait;
             lock (_lock)
             {
+                // mark disposed under lock to prevent race with concurrent writers restarting pump
+                _isDisposed = true;
                 taskToWait = _pumpTask;
             }
 
@@ -96,10 +105,18 @@ namespace RCi.Toolbox.Boxes
         {
             _eventChannel.Writer.TryComplete();
 
-            // asynchronously wait for the pump to finish processing the remaining items
-            if (_pumpTask is not null)
+            Task? taskToWait;
+            lock (_lock)
             {
-                await _pumpTask.ConfigureAwait(false);
+                // read _pumpTask under lock to ensure thread safety consistent with Dispose()
+                _isDisposed = true;
+                taskToWait = _pumpTask;
+            }
+
+            // asynchronously wait for the pump to finish processing the remaining items
+            if (taskToWait is not null)
+            {
+                await taskToWait.ConfigureAwait(false);
             }
         }
 
@@ -117,6 +134,11 @@ namespace RCi.Toolbox.Boxes
                         // redundant if action is fully synchronous
                         lock (_lock)
                         {
+                            if (_isDisposed)
+                            {
+                                // reject mutating or restarting pump if the box has already been disposed
+                                return;
+                            }
                             if (_funcEquals(_value, v))
                             {
                                 return;
@@ -148,6 +170,11 @@ namespace RCi.Toolbox.Boxes
                         // redundant if action is fully synchronous
                         lock (_lock)
                         {
+                            if (_isDisposed)
+                            {
+                                // reject mutating or restarting pump if the box has already been disposed
+                                return;
+                            }
                             if (_funcEquals(_value, v))
                             {
                                 return;
@@ -185,6 +212,12 @@ namespace RCi.Toolbox.Boxes
         private void EnsurePumpingUnsafe()
         {
             // NOTE: assumes the caller already holds lock (_lock)
+            if (_isDisposed)
+            {
+                // do not start pumping if already disposed
+                return;
+            }
+
             // If the task is null, or if it somehow crashed and completed, spin up a new one
             if (_pumpTask is null || _pumpTask.IsCompleted)
             {
@@ -198,7 +231,9 @@ namespace RCi.Toolbox.Boxes
             {
                 // ReadAllAsync yields the thread back to the pool when the channel is empty,
                 // it only wakes up when new items are written
-                await foreach (var value in _eventChannel.Reader.ReadAllAsync())
+                await foreach (
+                    var value in _eventChannel.Reader.ReadAllAsync().ConfigureAwait(false)
+                )
                 {
                     try
                     {
