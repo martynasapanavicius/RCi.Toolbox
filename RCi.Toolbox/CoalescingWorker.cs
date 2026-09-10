@@ -234,7 +234,7 @@ namespace RCi.Toolbox
             (var success, wasCoalesced) = _stateBox.AccessLocked(
                 (g, s) =>
                 {
-                    if (ct.IsCancellationRequested)
+                    if (_ct.IsCancellationRequested || ct.IsCancellationRequested)
                     {
                         return (false, false);
                     }
@@ -282,9 +282,13 @@ namespace RCi.Toolbox
             out bool wasCoalesced
         )
         {
-            using var ctsMerged = CancellationTokenSource.CreateLinkedTokenSource(_ct, ct);
-            var ctMerged = ctsMerged.Token;
-            return ScheduleRaw(ctMerged, out wasCoalesced);
+            if (_ct.IsCancellationRequested || ct.IsCancellationRequested)
+            {
+                wasCoalesced = false;
+                return false;
+            }
+
+            return ScheduleRaw(ct, out wasCoalesced);
         }
 
         private bool ScheduleInternal(TimeSpan waitBeforeScheduling, out bool wasCoalesced)
@@ -312,6 +316,23 @@ namespace RCi.Toolbox
             if (waitBeforeScheduling <= TimeSpan.Zero)
             {
                 return ScheduleInternalWithCancellationToken(ct, out wasCoalesced);
+            }
+
+            if (_ct.IsCancellationRequested || ct.IsCancellationRequested)
+            {
+                wasCoalesced = false;
+                return false;
+            }
+
+            if (!ct.CanBeCanceled)
+            {
+                if (!waitBeforeScheduling.Sleep(_timeProvider, _ct))
+                {
+                    wasCoalesced = false;
+                    return false;
+                }
+
+                return ScheduleRaw(_ct, out wasCoalesced);
             }
 
             using var ctsMerged = CancellationTokenSource.CreateLinkedTokenSource(_ct, ct);
@@ -368,6 +389,24 @@ namespace RCi.Toolbox
             if (waitBeforeScheduling <= TimeSpan.Zero)
             {
                 success = ScheduleInternalWithCancellationToken(ct, out wasCoalesced);
+                return (success, wasCoalesced);
+            }
+
+            if (_ct.IsCancellationRequested || ct.IsCancellationRequested)
+            {
+                return (false, false);
+            }
+
+            if (!ct.CanBeCanceled)
+            {
+                if (
+                    !await waitBeforeScheduling.SleepAsync(_timeProvider, _ct).ConfigureAwait(false)
+                )
+                {
+                    return (false, false);
+                }
+
+                success = ScheduleRaw(_ct, out wasCoalesced);
                 return (success, wasCoalesced);
             }
 

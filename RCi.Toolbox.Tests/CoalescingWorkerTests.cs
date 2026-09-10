@@ -367,5 +367,70 @@ namespace RCi.Toolbox.Tests
                 _ = new CoalescingWorker(CoalescingWorkerParameters.Default, null!)
             );
         }
+
+        [Test]
+        public static async Task Schedule_WithCancellationToken_Scenarios()
+        {
+            var executed = 0;
+            using var worker = new CoalescingWorker(() => Interlocked.Increment(ref executed));
+
+            using var ctsCancelled = new CancellationTokenSource();
+            ctsCancelled.Cancel();
+
+            // Pre-cancelled token should reject schedule immediately
+            var success = worker.Schedule(TimeSpan.Zero, ctsCancelled.Token, out var wasCoalesced);
+            Assert.That(success, Is.False);
+            Assert.That(wasCoalesced, Is.False);
+
+            var asyncResult = await worker.ScheduleAsync(TimeSpan.Zero, ctsCancelled.Token);
+            Assert.That(asyncResult.Success, Is.False);
+            Assert.That(asyncResult.WasCoalesced, Is.False);
+
+            // Valid schedule with CancellationToken.None
+            success = worker.Schedule(
+                TimeSpan.FromMilliseconds(5),
+                CancellationToken.None,
+                out wasCoalesced
+            );
+            Assert.That(success, Is.True);
+            Assert.That(wasCoalesced, Is.False);
+
+            worker.WaitForIdle();
+            Assert.That(executed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public static async Task Schedule_AfterDispose_ReturnsFalse()
+        {
+            var worker = new CoalescingWorker(() => { });
+            worker.Dispose();
+
+            using var cts = new CancellationTokenSource();
+
+            Assert.That(worker.Schedule(TimeSpan.Zero, cts.Token, out var wasCoalesced), Is.False);
+            Assert.That(wasCoalesced, Is.False);
+
+            Assert.That(
+                worker.Schedule(TimeSpan.FromMilliseconds(5), cts.Token, out wasCoalesced),
+                Is.False
+            );
+            Assert.That(wasCoalesced, Is.False);
+
+            Assert.That(
+                worker.Schedule(
+                    TimeSpan.FromMilliseconds(5),
+                    CancellationToken.None,
+                    out wasCoalesced
+                ),
+                Is.False
+            );
+            Assert.That(wasCoalesced, Is.False);
+
+            var asyncResult = await worker.ScheduleAsync(TimeSpan.Zero, cts.Token);
+            Assert.That(asyncResult.Success, Is.False);
+
+            asyncResult = await worker.ScheduleAsync(TimeSpan.FromMilliseconds(5), cts.Token);
+            Assert.That(asyncResult.Success, Is.False);
+        }
     }
 }
