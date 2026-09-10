@@ -562,9 +562,20 @@ namespace RCi.Toolbox
             ///     <see langword="true"/> - if job was enqueued and executed successfully,
             ///     <see langword="false"/> - job queue is cancelled and job was rejected.
             /// </returns>
-            public bool Send(Action<CancellationToken> job, out JobResult result)
+            public bool Send(Action<CancellationToken> job, out JobResult result) =>
+                jobQueue.Send(job, Timeout.InfiniteTimeSpan, CancellationToken.None, out result);
+
+            /// <summary>
+            /// Enqueues the job and waits for completion with timeout and cancellation support.
+            /// </summary>
+            public bool Send(
+                Action<CancellationToken> job,
+                TimeSpan timeout,
+                CancellationToken ct,
+                out JobResult result
+            )
             {
-                using var waiter = new AutoResetEvent(false);
+                using var waiter = new ManualResetEventSlim(false);
                 var resultOut = default(JobResult);
                 var enqueued = jobQueue.Post(
                     job,
@@ -576,15 +587,55 @@ namespace RCi.Toolbox
                 );
                 if (enqueued)
                 {
-                    waiter.WaitOne();
+                    try
+                    {
+                        if (!waiter.Wait(timeout, ct))
+                        {
+                            result = new JobResult(
+                                ct.IsCancellationRequested,
+                                new TimeoutException()
+                            );
+                            return false;
+                        }
+                    }
+                    catch (OperationCanceledException oce)
+                    {
+                        result = new JobResult(true, oce);
+                        return false;
+                    }
                 }
                 result = resultOut;
                 return enqueued;
             }
 
+            public bool Send(
+                Action<CancellationToken> job,
+                TimeSpan timeout,
+                out JobResult result
+            ) => jobQueue.Send(job, timeout, CancellationToken.None, out result);
+
+            public bool Send(
+                Action<CancellationToken> job,
+                CancellationToken ct,
+                out JobResult result
+            ) => jobQueue.Send(job, Timeout.InfiniteTimeSpan, ct, out result);
+
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action job, out JobResult result) =>
                 jobQueue.Send(_ => job(), out result);
+
+            public bool Send(
+                Action job,
+                TimeSpan timeout,
+                CancellationToken ct,
+                out JobResult result
+            ) => jobQueue.Send(_ => job(), timeout, ct, out result);
+
+            public bool Send(Action job, TimeSpan timeout, out JobResult result) =>
+                jobQueue.Send(_ => job(), timeout, CancellationToken.None, out result);
+
+            public bool Send(Action job, CancellationToken ct, out JobResult result) =>
+                jobQueue.Send(_ => job(), Timeout.InfiniteTimeSpan, ct, out result);
 
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send(Action<CancellationToken> job) => jobQueue.Send(job, out _);
@@ -593,23 +644,241 @@ namespace RCi.Toolbox
             public bool Send(Action job) => jobQueue.Send(job, out _);
 
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
-            public bool Send<T>(Func<CancellationToken, T> job, out JobResult<T> result)
+            public bool Send<T>(Func<CancellationToken, T> job, out JobResult<T> result) =>
+                jobQueue.Send(job, Timeout.InfiniteTimeSpan, CancellationToken.None, out result);
+
+            public bool Send<T>(
+                Func<CancellationToken, T> job,
+                TimeSpan timeout,
+                CancellationToken ct,
+                out JobResult<T> result
+            )
             {
                 var value = default(T);
                 var enqueued = jobQueue.Send(
-                    ct =>
+                    c =>
                     {
-                        value = job(ct);
+                        value = job(c);
                     },
+                    timeout,
+                    ct,
                     out var resultVanilla
                 );
                 result = new JobResult<T>(resultVanilla.Cancelled, resultVanilla.Exception, value);
                 return enqueued;
             }
 
+            public bool Send<T>(
+                Func<CancellationToken, T> job,
+                TimeSpan timeout,
+                out JobResult<T> result
+            ) => jobQueue.Send(job, timeout, CancellationToken.None, out result);
+
+            public bool Send<T>(
+                Func<CancellationToken, T> job,
+                CancellationToken ct,
+                out JobResult<T> result
+            ) => jobQueue.Send(job, Timeout.InfiniteTimeSpan, ct, out result);
+
             /// <inheritdoc cref="Send(IJobQueue,Action{CancellationToken},out JobResult)" />
             public bool Send<T>(Func<T> job, out JobResult<T> result) =>
                 jobQueue.Send(_ => job(), out result);
+
+            public bool Send<T>(
+                Func<T> job,
+                TimeSpan timeout,
+                CancellationToken ct,
+                out JobResult<T> result
+            ) => jobQueue.Send(_ => job(), timeout, ct, out result);
+
+            public bool Send<T>(Func<T> job, TimeSpan timeout, out JobResult<T> result) =>
+                jobQueue.Send(_ => job(), timeout, CancellationToken.None, out result);
+
+            public bool Send<T>(Func<T> job, CancellationToken ct, out JobResult<T> result) =>
+                jobQueue.Send(_ => job(), Timeout.InfiniteTimeSpan, ct, out result);
+
+            /// <summary>
+            /// Asynchronously enqueues the job and returns a task that completes when execution finishes.
+            /// </summary>
+            public async Task<JobResult<T>> SendAsync<T>(
+                Func<CancellationToken, T> job,
+                TimeSpan timeout,
+                CancellationToken ct
+            )
+            {
+                var tcs = new TaskCompletionSource<JobResult<T>>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+                var value = default(T);
+                var enqueued = jobQueue.Post(
+                    c =>
+                    {
+                        value = job(c);
+                    },
+                    r =>
+                    {
+                        tcs.TrySetResult(new JobResult<T>(r.Cancelled, r.Exception, value));
+                    }
+                );
+
+                if (!enqueued)
+                {
+                    return new JobResult<T>(true, null, default);
+                }
+
+                if (timeout != Timeout.InfiniteTimeSpan && ct.CanBeCanceled)
+                {
+                    try
+                    {
+                        return await tcs.Task.WaitAsync(timeout, ct).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException te)
+                    {
+                        return new JobResult<T>(ct.IsCancellationRequested, te, default);
+                    }
+                    catch (OperationCanceledException oce)
+                    {
+                        return new JobResult<T>(true, oce, default);
+                    }
+                }
+
+                if (timeout != Timeout.InfiniteTimeSpan)
+                {
+                    try
+                    {
+                        return await tcs.Task.WaitAsync(timeout).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException te)
+                    {
+                        return new JobResult<T>(ct.IsCancellationRequested, te, default);
+                    }
+                }
+
+                if (ct.CanBeCanceled)
+                {
+                    try
+                    {
+                        return await tcs.Task.WaitAsync(ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException oce)
+                    {
+                        return new JobResult<T>(true, oce, default);
+                    }
+                }
+
+                return await tcs.Task.ConfigureAwait(false);
+            }
+
+            public Task<JobResult<T>> SendAsync<T>(
+                Func<CancellationToken, T> job,
+                TimeSpan timeout
+            ) => jobQueue.SendAsync(job, timeout, CancellationToken.None);
+
+            public Task<JobResult<T>> SendAsync<T>(
+                Func<CancellationToken, T> job,
+                CancellationToken ct
+            ) => jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, ct);
+
+            public Task<JobResult<T>> SendAsync<T>(Func<CancellationToken, T> job) =>
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, CancellationToken.None);
+
+            public Task<JobResult<T>> SendAsync<T>(
+                Func<T> job,
+                TimeSpan timeout,
+                CancellationToken ct
+            ) => jobQueue.SendAsync(_ => job(), timeout, ct);
+
+            public Task<JobResult<T>> SendAsync<T>(Func<T> job, TimeSpan timeout) =>
+                jobQueue.SendAsync(_ => job(), timeout, CancellationToken.None);
+
+            public Task<JobResult<T>> SendAsync<T>(Func<T> job, CancellationToken ct) =>
+                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, ct);
+
+            public Task<JobResult<T>> SendAsync<T>(Func<T> job) =>
+                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, CancellationToken.None);
+
+            /// <summary>
+            /// Asynchronously enqueues the job and returns a task that completes when execution finishes.
+            /// </summary>
+            public async Task<JobResult> SendAsync(
+                Action<CancellationToken> job,
+                TimeSpan timeout,
+                CancellationToken ct
+            )
+            {
+                var tcs = new TaskCompletionSource<JobResult>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+                var enqueued = jobQueue.Post(job, r => tcs.TrySetResult(r));
+
+                if (!enqueued)
+                {
+                    return new JobResult(true, null);
+                }
+
+                if (timeout != Timeout.InfiniteTimeSpan && ct.CanBeCanceled)
+                {
+                    try
+                    {
+                        return await tcs.Task.WaitAsync(timeout, ct).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException te)
+                    {
+                        return new JobResult(ct.IsCancellationRequested, te);
+                    }
+                    catch (OperationCanceledException oce)
+                    {
+                        return new JobResult(true, oce);
+                    }
+                }
+
+                if (timeout != Timeout.InfiniteTimeSpan)
+                {
+                    try
+                    {
+                        return await tcs.Task.WaitAsync(timeout).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException te)
+                    {
+                        return new JobResult(ct.IsCancellationRequested, te);
+                    }
+                }
+
+                if (ct.CanBeCanceled)
+                {
+                    try
+                    {
+                        return await tcs.Task.WaitAsync(ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException oce)
+                    {
+                        return new JobResult(true, oce);
+                    }
+                }
+
+                return await tcs.Task.ConfigureAwait(false);
+            }
+
+            public Task<JobResult> SendAsync(Action<CancellationToken> job, TimeSpan timeout) =>
+                jobQueue.SendAsync(job, timeout, CancellationToken.None);
+
+            public Task<JobResult> SendAsync(Action<CancellationToken> job, CancellationToken ct) =>
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, ct);
+
+            public Task<JobResult> SendAsync(Action<CancellationToken> job) =>
+                jobQueue.SendAsync(job, Timeout.InfiniteTimeSpan, CancellationToken.None);
+
+            public Task<JobResult> SendAsync(Action job, TimeSpan timeout, CancellationToken ct) =>
+                jobQueue.SendAsync(_ => job(), timeout, ct);
+
+            public Task<JobResult> SendAsync(Action job, TimeSpan timeout) =>
+                jobQueue.SendAsync(_ => job(), timeout, CancellationToken.None);
+
+            public Task<JobResult> SendAsync(Action job, CancellationToken ct) =>
+                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, ct);
+
+            public Task<JobResult> SendAsync(Action job) =>
+                jobQueue.SendAsync(_ => job(), Timeout.InfiniteTimeSpan, CancellationToken.None);
 
             //
 

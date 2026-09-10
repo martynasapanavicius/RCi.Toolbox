@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RCi.Toolbox.Tests
 {
@@ -440,6 +441,191 @@ namespace RCi.Toolbox.Tests
             Assert.That(result.Exception, Is.Not.Null);
             Assert.That(result.Exception.Message, Is.EqualTo("test"));
             Assert.That(result.Result, Is.EqualTo(0));
+        }
+
+        [Test]
+        public static void Send_WithTimeout_TimesOut()
+        {
+            using var jobQueue = new JobQueue();
+            using var blocker = new ManualResetEvent(false);
+
+            var success = jobQueue.Send(
+                _ => blocker.WaitOne(),
+                TimeSpan.FromMilliseconds(50),
+                out var result
+            );
+
+            Assert.That(success, Is.False);
+            Assert.That(result.Exception, Is.TypeOf<TimeoutException>());
+
+            blocker.Set();
+            jobQueue.WaitForIdle();
+        }
+
+        [Test]
+        public static void Send_WithCancellation_Cancels()
+        {
+            using var jobQueue = new JobQueue();
+            using var blocker = new ManualResetEvent(false);
+            using var cts = new CancellationTokenSource();
+
+            var task = Task.Run(() =>
+            {
+                return jobQueue.Send(_ => blocker.WaitOne(), cts.Token, out _);
+            });
+
+            Thread.Sleep(50);
+            cts.Cancel();
+
+            var success = task.Result;
+            Assert.That(success, Is.False);
+
+            blocker.Set();
+            jobQueue.WaitForIdle();
+        }
+
+        [Test]
+        public static async Task SendAsync_ReturnsResult()
+        {
+            using var jobQueue = new JobQueue();
+            var result = await jobQueue.SendAsync(() => 1337);
+            Assert.That(result.Cancelled, Is.False);
+            Assert.That(result.Exception, Is.Null);
+            Assert.That(result.Result, Is.EqualTo(1337));
+        }
+
+        [Test]
+        public static async Task SendAsync_CatchJobException()
+        {
+            using var jobQueue = new JobQueue();
+            var result = await jobQueue.SendAsync<int>(() =>
+                throw new InvalidOperationException("async fail")
+            );
+            Assert.That(result.Cancelled, Is.False);
+            Assert.That(result.Exception, Is.TypeOf<InvalidOperationException>());
+            Assert.That(result.Exception.Message, Is.EqualTo("async fail"));
+            Assert.That(result.Result, Is.EqualTo(0));
+        }
+
+        [Test]
+        public static async Task SendAsync_Action()
+        {
+            using var jobQueue = new JobQueue();
+            var executed = false;
+            var result = await jobQueue.SendAsync(() => executed = true);
+            Assert.That(result.Cancelled, Is.False);
+            Assert.That(result.Exception, Is.Null);
+            Assert.That(executed, Is.True);
+        }
+
+        [Test]
+        public static async Task SendAsync_WithTimeout_TimesOut()
+        {
+            using var jobQueue = new JobQueue();
+            using var blocker = new ManualResetEvent(false);
+
+            try
+            {
+                var result = await jobQueue.SendAsync(
+                    () =>
+                    {
+                        blocker.WaitOne();
+                        return 42;
+                    },
+                    TimeSpan.FromMilliseconds(50)
+                );
+
+                Assert.That(result.Exception, Is.TypeOf<TimeoutException>());
+                Assert.That(result.Result, Is.EqualTo(0));
+            }
+            finally
+            {
+                blocker.Set();
+            }
+
+            jobQueue.WaitForIdle();
+        }
+
+        [Test]
+        public static async Task SendAsync_WithCancellation_Cancels()
+        {
+            using var jobQueue = new JobQueue();
+            using var blocker = new ManualResetEvent(false);
+            using var cts = new CancellationTokenSource();
+
+            try
+            {
+                var task = jobQueue.SendAsync(
+                    () =>
+                    {
+                        blocker.WaitOne();
+                        return 42;
+                    },
+                    cts.Token
+                );
+
+                await Task.Delay(50);
+                cts.Cancel();
+
+                var result = await task;
+                Assert.That(result.Cancelled, Is.True);
+                Assert.That(result.Exception, Is.InstanceOf<OperationCanceledException>());
+            }
+            finally
+            {
+                blocker.Set();
+            }
+
+            jobQueue.WaitForIdle();
+        }
+
+        [Test]
+        public static async Task SendAsync_Action_WithTimeout_TimesOut()
+        {
+            using var jobQueue = new JobQueue();
+            using var blocker = new ManualResetEvent(false);
+
+            try
+            {
+                var result = await jobQueue.SendAsync(
+                    () => blocker.WaitOne(),
+                    TimeSpan.FromMilliseconds(50)
+                );
+
+                Assert.That(result.Exception, Is.TypeOf<TimeoutException>());
+            }
+            finally
+            {
+                blocker.Set();
+            }
+
+            jobQueue.WaitForIdle();
+        }
+
+        [Test]
+        public static async Task SendAsync_Action_WithCancellation_Cancels()
+        {
+            using var jobQueue = new JobQueue();
+            using var blocker = new ManualResetEvent(false);
+            using var cts = new CancellationTokenSource();
+
+            try
+            {
+                var task = jobQueue.SendAsync(() => blocker.WaitOne(), cts.Token);
+
+                await Task.Delay(50);
+                cts.Cancel();
+
+                var result = await task;
+                Assert.That(result.Cancelled, Is.True);
+                Assert.That(result.Exception, Is.InstanceOf<OperationCanceledException>());
+            }
+            finally
+            {
+                blocker.Set();
+            }
+
+            jobQueue.WaitForIdle();
         }
     }
 }
