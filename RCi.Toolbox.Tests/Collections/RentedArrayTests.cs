@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -54,7 +55,7 @@ namespace RCi.Toolbox.Tests.Collections
             }
             Assert.Throws<NullReferenceException>(() => actual[0] = 333);
 
-            Assert.DoesNotThrow(() => actual.Dispose());
+            Assert.DoesNotThrow(actual.Dispose);
         }
 
         [Test]
@@ -93,7 +94,7 @@ namespace RCi.Toolbox.Tests.Collections
         }
 
         [Test]
-        public static void GetEnumerator()
+        public static void GetEnumerator_Exhaustive()
         {
             using var actual = CreateTestRentedArray();
             using var enumerator = actual.GetEnumerator();
@@ -149,7 +150,7 @@ namespace RCi.Toolbox.Tests.Collections
         }
 
         [Test]
-        public static void Count()
+        public static void CountProperty()
         {
             using var actual = CreateTestRentedArray();
             Assert.That(actual.Count, Is.EqualTo(_originalArray.Length));
@@ -240,6 +241,203 @@ namespace RCi.Toolbox.Tests.Collections
         }
 
         [Test]
+        public static void ToRentedArray_NonEnumeratedCount()
+        {
+            var range = Enumerable.Range(10, 20);
+            Assert.That(range.TryGetNonEnumeratedCount(out var count) && count == 20, Is.True);
+            using var actual = range.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(Enumerable.Range(10, 20)), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_List()
+        {
+            var original = new List<int>(_originalArray);
+            using var actual = original.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_RentedArray()
+        {
+            using var source = _originalArray.ToRentedArray(false);
+            using var actual = source.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_RentedList()
+        {
+            using var source = _originalArray.ToRentedList(false);
+            using var actual = source.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_IReadOnlyCollection()
+        {
+            var original = new TestReadOnlyCollection<int>(_originalArray);
+            using var actual = original.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_IReadOnlyList()
+        {
+            var original = new TestReadOnlyList<int>(_originalArray);
+            using var actual = original.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_NonGenericICollection()
+        {
+            var original = new TestNonGenericCollection<int>(_originalArray);
+            using var actual = original.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_ReadOnlySpan()
+        {
+            ReadOnlySpan<int> span = _originalArray.AsSpan();
+            using var actual = span.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_Span()
+        {
+            Span<int> span = _originalArray.ToArray().AsSpan();
+            using var actual = span.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_ReadOnlyMemory()
+        {
+            ReadOnlyMemory<int> memory = _originalArray.AsMemory();
+            using var actual = memory.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void ToRentedArray_Memory()
+        {
+            Memory<int> memory = _originalArray.ToArray().AsMemory();
+            using var actual = memory.ToRentedArray(false);
+            Assert.That(actual.SequenceEqual(_originalArray), Is.True);
+        }
+
+        [Test]
+        public static void Ctor_ReadOnlySpan()
+        {
+            ReadOnlySpan<int> span = _originalArray.AsSpan();
+            using var actual1 = new RentedArray<int>(span, false);
+            Assert.That(actual1.SequenceEqual(_originalArray), Is.True);
+
+            using var actual2 = new RentedArray<int>(span, ArrayPool<int>.Shared, false);
+            Assert.That(actual2.SequenceEqual(_originalArray), Is.True);
+
+            using var empty = new RentedArray<int>(ReadOnlySpan<int>.Empty, false);
+            Assert.That(empty.Length, Is.EqualTo(0));
+        }
+
+        [Test]
+        public static void Ctor_ReadOnlyMemory()
+        {
+            ReadOnlyMemory<int> memory = _originalArray.AsMemory();
+            using var actual1 = new RentedArray<int>(memory, false);
+            Assert.That(actual1.SequenceEqual(_originalArray), Is.True);
+
+            using var actual2 = new RentedArray<int>(memory, ArrayPool<int>.Shared, false);
+            Assert.That(actual2.SequenceEqual(_originalArray), Is.True);
+
+            using var empty = new RentedArray<int>(ReadOnlyMemory<int>.Empty, false);
+            Assert.That(empty.Length, Is.EqualTo(0));
+        }
+
+        private sealed class TestReadOnlyCollection<T>(IEnumerable<T> items)
+            : IReadOnlyCollection<T>
+        {
+            private readonly List<T> _items = items.ToList();
+            public int Count => _items.Count;
+
+            public IEnumerator<T> GetEnumerator() => _items.GetEnumerator();
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        private sealed class TestReadOnlyList<T>(IEnumerable<T> items) : IReadOnlyList<T>
+        {
+            private readonly List<T> _items = items.ToList();
+            public int Count => _items.Count;
+            public T this[int index] => _items[index];
+
+            public IEnumerator<T> GetEnumerator() => _items.GetEnumerator();
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        private sealed class TestNonGenericCollection<T>(IEnumerable<T> items)
+            : ICollection,
+                IEnumerable<T>
+        {
+            private readonly List<T> _items = items.ToList();
+            public int Count => _items.Count;
+            public bool IsSynchronized => false;
+            public object SyncRoot => this;
+
+            public void CopyTo(Array array, int index) =>
+                ((ICollection)_items).CopyTo(array, index);
+
+            public IEnumerator<T> GetEnumerator() => _items.GetEnumerator();
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        private sealed class ThrowingReadOnlyCollection : IReadOnlyCollection<int>
+        {
+            public int Count => 10;
+
+            public IEnumerator<int> GetEnumerator()
+            {
+                yield return 1;
+                throw new InvalidOperationException("enumeration error");
+            }
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        private sealed class TrackingArrayPool<T> : ArrayPool<T>
+        {
+            public int RentCount { get; private set; }
+            public int ReturnCount { get; private set; }
+
+            public override T[] Rent(int minimumLength)
+            {
+                RentCount++;
+                return new T[minimumLength];
+            }
+
+            public override void Return(T[] array, bool clearArray = false)
+            {
+                ReturnCount++;
+            }
+        }
+
+        [Test]
+        public static void Ctor_ExceptionDuringEnumeration_ReturnsToPool()
+        {
+            var pool = new TrackingArrayPool<int>();
+            Assert.Throws<InvalidOperationException>(() =>
+                _ = new RentedArray<int>(new ThrowingReadOnlyCollection(), pool, false)
+            );
+            Assert.That(pool.RentCount, Is.EqualTo(1));
+            Assert.That(pool.ReturnCount, Is.EqualTo(1));
+        }
+
+        [Test]
         public static void UnsafeAccessUnderlyingArray()
         {
             using var actual = new RentedArray<int>(_originalArray.Length, false, false);
@@ -303,12 +501,20 @@ namespace RCi.Toolbox.Tests.Collections
             Assert.Throws<ArgumentNullException>(() =>
                 _ = new RentedArray<int>(10, null!, false, false)
             );
-            Assert.Throws<ArgumentNullException>(() => _ = new RentedArray<int>(null!, false));
             Assert.Throws<ArgumentNullException>(() =>
-                _ = new RentedArray<int>(null!, ArrayPool<int>.Shared, false)
+                _ = new RentedArray<int>((IEnumerable<int>)null!, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedArray<int>((IEnumerable<int>)null!, ArrayPool<int>.Shared, false)
             );
             Assert.Throws<ArgumentNullException>(() =>
                 _ = new RentedArray<int>([1, 2, 3], null!, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedArray<int>(ReadOnlySpan<int>.Empty, null!, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedArray<int>(ReadOnlyMemory<int>.Empty, null!, false)
             );
 
             IEnumerable<int> nullEnumerable = null!;

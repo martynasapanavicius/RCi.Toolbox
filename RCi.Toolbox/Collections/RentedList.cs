@@ -4,7 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace RCi.Toolbox.Collections
 {
@@ -129,51 +131,148 @@ namespace RCi.Toolbox.Collections
             ArgumentNullException.ThrowIfNull(pool);
             _pool = pool;
             _clearOnReturn = clearOnReturn;
-            switch (initItems)
+            try
             {
-                case T[] array:
-                    {
-                        var length = array.Length;
-                        _items = pool.Rent(length);
-                        _size = length;
-                        if (length > 0)
+                switch (initItems)
+                {
+                    case T[] array:
                         {
-                            array.AsSpan().CopyTo(_items.AsSpan(0, length));
+                            var length = array.Length;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                array.AsSpan().CopyTo(_items.AsSpan(0, length));
+                            }
                         }
-                    }
-                    break;
+                        break;
 
-                case ImmutableArray<T> immutableArray:
-                    {
-                        var length = immutableArray.IsDefault ? 0 : immutableArray.Length;
-                        _items = pool.Rent(length);
-                        _size = length;
-                        if (length > 0)
+                    case ImmutableArray<T> immutableArray:
                         {
-                            immutableArray.AsSpan().CopyTo(_items.AsSpan(0, length));
+                            var length = immutableArray.IsDefault ? 0 : immutableArray.Length;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                immutableArray.AsSpan().CopyTo(_items.AsSpan(0, length));
+                            }
                         }
-                    }
-                    break;
+                        break;
 
-                case ICollection<T> collection:
-                    {
-                        var length = collection.Count;
-                        _items = pool.Rent(collection.Count);
-                        _size = length;
-                        if (length > 0)
+                    case List<T> list:
                         {
-                            collection.CopyTo(_items, 0);
+                            var length = list.Count;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                CollectionsMarshal.AsSpan(list).CopyTo(_items.AsSpan(0, length));
+                            }
                         }
-                    }
-                    break;
+                        break;
 
-                default:
-                    _items = pool.Rent(DefaultCapacity);
-                    foreach (var item in initItems)
-                    {
-                        Add(item);
-                    }
-                    break;
+                    case RentedArray<T> rentedArray:
+                        {
+                            var length = rentedArray.Length;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                rentedArray.Span.CopyTo(_items.AsSpan(0, length));
+                            }
+                        }
+                        break;
+
+                    case RentedList<T> rentedList:
+                        {
+                            var length = rentedList.Count;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                rentedList.AsReadOnlySpanUnsafe().CopyTo(_items.AsSpan(0, length));
+                            }
+                        }
+                        break;
+
+                    case ICollection<T> collection:
+                        {
+                            var length = collection.Count;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                collection.CopyTo(_items, 0);
+                            }
+                        }
+                        break;
+
+                    case IReadOnlyCollection<T> readOnlyCollection:
+                        {
+                            var length = readOnlyCollection.Count;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                if (readOnlyCollection is IReadOnlyList<T> readOnlyList)
+                                {
+                                    for (var i = 0; i < length; i++)
+                                    {
+                                        _items[i] = readOnlyList[i];
+                                    }
+                                }
+                                else
+                                {
+                                    var i = 0;
+                                    foreach (var item in readOnlyCollection)
+                                    {
+                                        _items[i++] = item;
+                                    }
+                                }
+                            }
+                        }
+                        break;
+
+                    case ICollection nonGenericCollection:
+                        {
+                            var length = nonGenericCollection.Count;
+                            _items = pool.Rent(length);
+                            _size = length;
+                            if (length > 0)
+                            {
+                                nonGenericCollection.CopyTo(_items, 0);
+                            }
+                        }
+                        break;
+
+                    default:
+                        if (
+                            initItems.TryGetNonEnumeratedCount(out var nonEnumCount)
+                            && nonEnumCount >= 0
+                        )
+                        {
+                            _items = pool.Rent(nonEnumCount);
+                        }
+                        else
+                        {
+                            _items = pool.Rent(DefaultCapacity);
+                        }
+                        foreach (var item in initItems)
+                        {
+                            Add(item);
+                        }
+                        break;
+                }
+            }
+            catch
+            {
+                var items = _items;
+                if (items is not null)
+                {
+                    _items = null!;
+                    pool.Return(items, clearOnReturn);
+                }
+                throw;
             }
         }
 
@@ -189,6 +288,73 @@ namespace RCi.Toolbox.Collections
         /// </param>
         public RentedList(IEnumerable<T> initItems, bool clearOnReturn)
             : this(initItems, ArrayPool<T>.Shared, clearOnReturn) { }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that contains elements
+        /// copied from the specified read-only span, using a specific array pool.
+        /// </summary>
+        /// <param name="span">The span whose elements are copied into the new list.</param>
+        /// <param name="pool">The pool to rent the underlying array from.</param>
+        /// <param name="clearOnReturn">
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
+        /// </param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="pool"/> is <c>null</c>.</exception>
+        public RentedList(ReadOnlySpan<T> span, ArrayPool<T> pool, bool clearOnReturn)
+        {
+            ArgumentNullException.ThrowIfNull(pool);
+            _pool = pool;
+            _clearOnReturn = clearOnReturn;
+            var length = span.Length;
+            _items = pool.Rent(length);
+            _size = length;
+            if (length > 0)
+            {
+                span.CopyTo(_items.AsSpan(0, length));
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that contains elements
+        /// copied from the specified read-only span, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
+        /// <param name="span">The span whose elements are copied into the new list.</param>
+        /// <param name="clearOnReturn">
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
+        /// </param>
+        public RentedList(ReadOnlySpan<T> span, bool clearOnReturn)
+            : this(span, ArrayPool<T>.Shared, clearOnReturn) { }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that contains elements
+        /// copied from the specified read-only memory, using a specific array pool.
+        /// </summary>
+        /// <param name="memory">The memory whose elements are copied into the new list.</param>
+        /// <param name="pool">The pool to rent the underlying array from.</param>
+        /// <param name="clearOnReturn">
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
+        /// </param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="pool"/> is <c>null</c>.</exception>
+        public RentedList(ReadOnlyMemory<T> memory, ArrayPool<T> pool, bool clearOnReturn)
+            : this(memory.Span, pool, clearOnReturn) { }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RentedList{T}"/> class that contains elements
+        /// copied from the specified read-only memory, using <see cref="ArrayPool{T}.Shared"/>.
+        /// </summary>
+        /// <param name="memory">The memory whose elements are copied into the new list.</param>
+        /// <param name="clearOnReturn">
+        /// If <c>true</c>, zeroes out the rented memory when it is returned to the pool. This is useful when dealing with sensitive data.
+        /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
+        /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
+        /// </param>
+        public RentedList(ReadOnlyMemory<T> memory, bool clearOnReturn)
+            : this(memory.Span, ArrayPool<T>.Shared, clearOnReturn) { }
 
         /// <summary>
         /// Returns the underlying array to the pool and invalidates this instance.
@@ -516,33 +682,167 @@ namespace RCi.Toolbox.Collections
         #endregion
 
         /// <summary>
+        /// Adds the elements of the specified span to the end of the <see cref="RentedList{T}"/>.
+        /// </summary>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="span"/> overlaps with this list's underlying buffer.</exception>
+        public void AddRange(ReadOnlySpan<T> span)
+        {
+            var count = span.Length;
+            if (count <= 0)
+            {
+                return;
+            }
+
+            if (span.Overlaps(_items))
+            {
+                throw new ArgumentException(
+                    "Cannot add a span that overlaps with this list's own underlying buffer.",
+                    nameof(span)
+                );
+            }
+
+            if (_items.Length - _size < count)
+            {
+                Grow(checked(_size + count));
+            }
+
+            span.CopyTo(_items.AsSpan(_size, count));
+            _size += count;
+            _version++;
+        }
+
+        /// <summary>
+        /// Adds the elements of the specified memory to the end of the <see cref="RentedList{T}"/>.
+        /// </summary>
+        public void AddRange(ReadOnlyMemory<T> memory) => AddRange(memory.Span);
+
+        /// <summary>
         /// Adds the elements of the specified collection to the end of the <see cref="RentedList{T}"/>.
         /// </summary>
         public void AddRange(IEnumerable<T> collection)
         {
             ArgumentNullException.ThrowIfNull(collection);
 
-            if (collection is ICollection<T> c)
+            switch (collection)
             {
-                var count = c.Count;
-                if (count > 0)
-                {
-                    if (_items.Length - _size < count)
+                case T[] array:
+                    AddRange(array.AsSpan());
+                    break;
+
+                case ImmutableArray<T> immutableArray:
+                    AddRange(immutableArray.AsSpan());
+                    break;
+
+                case List<T> list:
+                    AddRange(CollectionsMarshal.AsSpan(list));
+                    break;
+
+                case RentedArray<T> rentedArray:
+                    AddRange(rentedArray.Span);
+                    break;
+
+                case RentedList<T> rentedList:
+                    if (ReferenceEquals(rentedList, this))
                     {
-                        Grow(checked(_size + count));
+                        var count = _size;
+                        if (count > 0)
+                        {
+                            if (_items.Length - _size < count)
+                            {
+                                Grow(checked(_size + count));
+                            }
+                            Array.Copy(_items, 0, _items, _size, count);
+                            _size += count;
+                            _version++;
+                        }
                     }
-                    c.CopyTo(_items, _size);
-                    _size += count;
-                    _version++;
-                }
-            }
-            else
-            {
-                using var en = collection.GetEnumerator();
-                while (en.MoveNext())
-                {
-                    Add(en.Current);
-                }
+                    else
+                    {
+                        AddRange(rentedList.AsReadOnlySpanUnsafe());
+                    }
+                    break;
+
+                case ICollection<T> c:
+                    {
+                        var count = c.Count;
+                        if (count > 0)
+                        {
+                            if (_items.Length - _size < count)
+                            {
+                                Grow(checked(_size + count));
+                            }
+                            c.CopyTo(_items, _size);
+                            _size += count;
+                            _version++;
+                        }
+                    }
+                    break;
+
+                case IReadOnlyCollection<T> readOnlyCollection:
+                    {
+                        var count = readOnlyCollection.Count;
+                        if (count > 0)
+                        {
+                            if (_items.Length - _size < count)
+                            {
+                                Grow(checked(_size + count));
+                            }
+                            if (readOnlyCollection is IReadOnlyList<T> readOnlyList)
+                            {
+                                for (var i = 0; i < count; i++)
+                                {
+                                    _items[_size + i] = readOnlyList[i];
+                                }
+                            }
+                            else
+                            {
+                                var i = 0;
+                                foreach (var item in readOnlyCollection)
+                                {
+                                    _items[_size + i++] = item;
+                                }
+                            }
+                            _size += count;
+                            _version++;
+                        }
+                    }
+                    break;
+
+                case ICollection nonGenericCollection:
+                    {
+                        var count = nonGenericCollection.Count;
+                        if (count > 0)
+                        {
+                            if (_items.Length - _size < count)
+                            {
+                                Grow(checked(_size + count));
+                            }
+                            nonGenericCollection.CopyTo(_items, _size);
+                            _size += count;
+                            _version++;
+                        }
+                    }
+                    break;
+
+                default:
+                    if (
+                        collection.TryGetNonEnumeratedCount(out var nonEnumCount)
+                        && nonEnumCount > 0
+                    )
+                    {
+                        if (_items.Length - _size < nonEnumCount)
+                        {
+                            Grow(checked(_size + nonEnumCount));
+                        }
+                    }
+                    using (var en = collection.GetEnumerator())
+                    {
+                        while (en.MoveNext())
+                        {
+                            Add(en.Current);
+                        }
+                    }
+                    break;
             }
         }
 
@@ -585,6 +885,66 @@ namespace RCi.Toolbox.Collections
             /// </param>
             public RentedList<T> ToRentedList(bool clearOnReturn) =>
                 items.ToRentedList(ArrayPool<T>.Shared, clearOnReturn);
+        }
+
+        extension<T>(ReadOnlySpan<T> span)
+        {
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from the specified pool and populates it with elements from the span.
+            /// </summary>
+            public RentedList<T> ToRentedList(ArrayPool<T> pool, bool clearOnReturn) =>
+                new(span, pool, clearOnReturn);
+
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from <see cref="ArrayPool{T}.Shared"/> and populates it with elements from the span.
+            /// </summary>
+            public RentedList<T> ToRentedList(bool clearOnReturn) =>
+                span.ToRentedList(ArrayPool<T>.Shared, clearOnReturn);
+        }
+
+        extension<T>(Span<T> span)
+        {
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from the specified pool and populates it with elements from the span.
+            /// </summary>
+            public RentedList<T> ToRentedList(ArrayPool<T> pool, bool clearOnReturn) =>
+                new(span, pool, clearOnReturn);
+
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from <see cref="ArrayPool{T}.Shared"/> and populates it with elements from the span.
+            /// </summary>
+            public RentedList<T> ToRentedList(bool clearOnReturn) =>
+                span.ToRentedList(ArrayPool<T>.Shared, clearOnReturn);
+        }
+
+        extension<T>(ReadOnlyMemory<T> memory)
+        {
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from the specified pool and populates it with elements from the memory.
+            /// </summary>
+            public RentedList<T> ToRentedList(ArrayPool<T> pool, bool clearOnReturn) =>
+                new(memory, pool, clearOnReturn);
+
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from <see cref="ArrayPool{T}.Shared"/> and populates it with elements from the memory.
+            /// </summary>
+            public RentedList<T> ToRentedList(bool clearOnReturn) =>
+                memory.ToRentedList(ArrayPool<T>.Shared, clearOnReturn);
+        }
+
+        extension<T>(Memory<T> memory)
+        {
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from the specified pool and populates it with elements from the memory.
+            /// </summary>
+            public RentedList<T> ToRentedList(ArrayPool<T> pool, bool clearOnReturn) =>
+                new(memory, pool, clearOnReturn);
+
+            /// <summary>
+            /// Allocates a new <see cref="RentedList{T}"/> from <see cref="ArrayPool{T}.Shared"/> and populates it with elements from the memory.
+            /// </summary>
+            public RentedList<T> ToRentedList(bool clearOnReturn) =>
+                memory.ToRentedList(ArrayPool<T>.Shared, clearOnReturn);
         }
     }
 }
