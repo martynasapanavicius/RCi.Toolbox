@@ -62,8 +62,12 @@ namespace RCi.Toolbox.Collections
         /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
         /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="initCapacity"/> is less than 0.</exception>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="pool"/> is <c>null</c>.</exception>
         public RentedList(int initCapacity, ArrayPool<T> pool, bool clearOnReturn)
         {
+            ArgumentOutOfRangeException.ThrowIfLessThan(initCapacity, 0);
+            ArgumentNullException.ThrowIfNull(pool);
             _pool = pool;
             _clearOnReturn = clearOnReturn;
             _items = pool.Rent(initCapacity);
@@ -118,8 +122,11 @@ namespace RCi.Toolbox.Collections
         /// WARNING: If the rented array holds reference types and is not cleared on return, the objects will be dangling in the pool.
         /// The GC won't be able to collect them unless the exact array is re-rented and the references are overwritten, which is unpredictable.
         /// </param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="initItems"/> or <paramref name="pool"/> is <c>null</c>.</exception>
         public RentedList(IEnumerable<T> initItems, ArrayPool<T> pool, bool clearOnReturn)
         {
+            ArgumentNullException.ThrowIfNull(initItems);
+            ArgumentNullException.ThrowIfNull(pool);
             _pool = pool;
             _clearOnReturn = clearOnReturn;
             switch (initItems)

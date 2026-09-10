@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -339,6 +340,42 @@ namespace RCi.Toolbox.Tests.Collections
                     yield return item;
                 }
             }
+        }
+
+        [Test]
+        public static void NullValidation()
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new RentedList<int>(10, null!, false));
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedList<int>((ArrayPool<int>)null!, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedList<int>((IEnumerable<int>)null!, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedList<int>((IEnumerable<int>)null!, ArrayPool<int>.Shared, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new RentedList<int>([1, 2, 3], null!, false)
+            );
+
+            IEnumerable<int> nullEnumerable = null!;
+            Assert.Throws<ArgumentNullException>(() => nullEnumerable.ToRentedList(false));
+            Assert.Throws<ArgumentNullException>(() =>
+                nullEnumerable.ToRentedList(ArrayPool<int>.Shared, false)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                new[] { 1, 2, 3 }.ToRentedList(null!, false)
+            );
+        }
+
+        [Test]
+        public static void Ctor_NegativeCapacity_Throws()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => _ = new RentedList<int>(-1, false));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _ = new RentedList<int>(-1, ArrayPool<int>.Shared, false)
+            );
         }
     }
 }
