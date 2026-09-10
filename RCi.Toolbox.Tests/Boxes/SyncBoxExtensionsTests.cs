@@ -404,5 +404,80 @@ namespace RCi.Toolbox.Tests.Boxes
             var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await waitTask);
             Assert.That(ex.Message, Is.EqualTo("predicate failed in wait"));
         }
+
+        [Test]
+        public static void NullValidation()
+        {
+            ISyncBoxReadOnly<int> nullBox = null!;
+            ISyncBox<int> box = new SyncBox<int>(0);
+
+            // Null box
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await nullBox.WaitForAsync(
+                    _ => true,
+                    TimeSpan.Zero,
+                    TimeProvider.System,
+                    CancellationToken.None
+                )
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                nullBox.WaitFor(
+                    _ => true,
+                    TimeSpan.Zero,
+                    TimeProvider.System,
+                    CancellationToken.None
+                )
+            );
+
+            // Null isDone
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await box.WaitForAsync(
+                    null!,
+                    TimeSpan.Zero,
+                    TimeProvider.System,
+                    CancellationToken.None
+                )
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await box.WaitForAsync(
+                    null!,
+                    TimeSpan.FromSeconds(1),
+                    TimeProvider.System,
+                    CancellationToken.None
+                )
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await box.WaitForAsync(null!));
+            Assert.Throws<ArgumentNullException>(() =>
+                box.WaitFor(null!, TimeSpan.Zero, TimeProvider.System, CancellationToken.None)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.WaitFor(
+                    null!,
+                    TimeSpan.FromSeconds(1),
+                    TimeProvider.System,
+                    CancellationToken.None
+                )
+            );
+            Assert.Throws<ArgumentNullException>(() => box.WaitFor(null!));
+
+            // Null timeProvider (both for TimeSpan.Zero and positive timeout)
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await box.WaitForAsync(_ => true, TimeSpan.Zero, null!, CancellationToken.None)
+            );
+            Assert.ThrowsAsync<ArgumentNullException>(async () =>
+                await box.WaitForAsync(
+                    _ => true,
+                    TimeSpan.FromSeconds(1),
+                    null!,
+                    CancellationToken.None
+                )
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.WaitFor(_ => true, TimeSpan.Zero, null!, CancellationToken.None)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.WaitFor(_ => true, TimeSpan.FromSeconds(1), null!, CancellationToken.None)
+            );
+        }
     }
 }

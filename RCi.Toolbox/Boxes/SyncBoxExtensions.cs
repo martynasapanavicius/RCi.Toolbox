@@ -23,6 +23,10 @@ namespace RCi.Toolbox.Boxes
                 CancellationToken ct
             )
             {
+                ArgumentNullException.ThrowIfNull(box);
+                ArgumentNullException.ThrowIfNull(isDone);
+                ArgumentNullException.ThrowIfNull(timeProvider);
+
                 // special handling for no timeout
                 if (timeout == TimeSpan.Zero)
                 {
@@ -133,6 +137,10 @@ namespace RCi.Toolbox.Boxes
                 CancellationToken ct
             )
             {
+                ArgumentNullException.ThrowIfNull(box);
+                ArgumentNullException.ThrowIfNull(isDone);
+                ArgumentNullException.ThrowIfNull(timeProvider);
+
                 // special handling for no timeout
                 if (timeout == TimeSpan.Zero)
                 {
