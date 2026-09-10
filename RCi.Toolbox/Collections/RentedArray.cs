@@ -266,7 +266,7 @@ namespace RCi.Toolbox.Collections
                 if (array is not null)
                 {
                     _array = null!;
-                    pool.Return(array, clearOnReturn);
+                    pool.Return(array, true); // ALWAYS clear, because user never had a chance to get hold on to it
                 }
                 throw;
             }
