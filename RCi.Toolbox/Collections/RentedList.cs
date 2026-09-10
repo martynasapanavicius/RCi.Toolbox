@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
@@ -188,23 +188,13 @@ namespace RCi.Toolbox.Collections
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        ~RentedList() => Dispose(false);
-
-        private void Dispose(bool disposing)
-        {
-            if (_items is null)
+            var items = _items;
+            if (ReferenceEquals(items, null))
             {
                 return;
             }
-            if (disposing)
-            {
-                _pool.Return(_items, _clearOnReturn);
-            }
             _items = null!;
+            _pool.Return(items, _clearOnReturn);
         }
 
         /// <summary>
