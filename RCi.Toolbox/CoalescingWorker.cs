@@ -128,6 +128,7 @@ namespace RCi.Toolbox
         private readonly Action<Exception>? _onJobExceptionCallback;
         private readonly SyncBox<State> _stateBox; // synchronized state, internals can rely on it
         private readonly JobQueue _jobQueue;
+        private readonly Action _jobQueueAction;
         private readonly TimeProvider _timeProvider;
 
         private readonly SyncBox<bool> _isBusyBox = new(false); // this box is only for observers
@@ -145,6 +146,7 @@ namespace RCi.Toolbox
             _cts = new CancellationTokenSource();
             _ct = _cts.Token;
             _job = job;
+            _jobQueueAction = Job;
             _onJobExceptionCallback = parameters.OnJobExceptionCallback;
             _timeProvider = parameters.TimeProvider ?? TimeProvider.System;
 
@@ -262,7 +264,7 @@ namespace RCi.Toolbox
                     s(stateBefore with { IsScheduled = true });
 
                     // schedule on a vendor
-                    var success = _jobQueue.Post(Job);
+                    var success = _jobQueue.Post(_jobQueueAction);
                     if (!success)
                     {
                         // this shouldn't ever happen
