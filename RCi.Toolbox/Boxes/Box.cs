@@ -29,6 +29,7 @@ namespace RCi.Toolbox.Boxes
 
         public Box(T initValue, Func<T, T, bool> funcEquals)
         {
+            ArgumentNullException.ThrowIfNull(funcEquals);
             _value = initValue;
             _funcEquals = funcEquals;
         }

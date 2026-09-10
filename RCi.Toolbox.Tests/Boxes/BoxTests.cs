@@ -144,5 +144,11 @@ namespace RCi.Toolbox.Tests.Boxes
             var actual = new Box<int>(123);
             Assert.That(actual.ToString(), Is.EqualTo("123"));
         }
+
+        [Test]
+        public static void Ctor_NullValidation()
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new Box<int>(123, null!));
+        }
     }
 }
