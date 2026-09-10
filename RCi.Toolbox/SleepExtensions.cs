@@ -21,6 +21,8 @@ namespace RCi.Toolbox
             /// </remarks>
             public void Sleep(TimeProvider timeProvider)
             {
+                ArgumentNullException.ThrowIfNull(timeProvider);
+
                 if (delay <= TimeSpan.Zero && delay != Timeout.InfiniteTimeSpan)
                 {
                     return;
@@ -55,6 +57,8 @@ namespace RCi.Toolbox
             /// </remarks>
             public bool Sleep(TimeProvider timeProvider, CancellationToken ct)
             {
+                ArgumentNullException.ThrowIfNull(timeProvider);
+
                 if (delay <= TimeSpan.Zero && delay != Timeout.InfiniteTimeSpan)
                 {
                     return true;
@@ -111,6 +115,8 @@ namespace RCi.Toolbox
             /// </remarks>
             public Task SleepAsync(TimeProvider timeProvider)
             {
+                ArgumentNullException.ThrowIfNull(timeProvider);
+
                 if (delay <= TimeSpan.Zero && delay != Timeout.InfiniteTimeSpan)
                 {
                     return Task.CompletedTask;
@@ -137,6 +143,8 @@ namespace RCi.Toolbox
             /// </remarks>
             public Task<bool> SleepAsync(TimeProvider timeProvider, CancellationToken ct)
             {
+                ArgumentNullException.ThrowIfNull(timeProvider);
+
                 if (delay <= TimeSpan.Zero && delay != Timeout.InfiniteTimeSpan)
                 {
                     return Task.FromResult(true);

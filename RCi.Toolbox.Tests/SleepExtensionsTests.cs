@@ -140,5 +140,39 @@ namespace RCi.Toolbox.Tests
             var slept = TimeSpan.FromMilliseconds(1).Sleep(CancellationToken.None);
             Assert.True(slept);
         }
+
+        [Test]
+        public static void NullValidation()
+        {
+            TimeProvider nullTimeProvider = null!;
+
+            // Sleep(timeProvider)
+            Assert.Throws<ArgumentNullException>(() => TimeSpan.Zero.Sleep(nullTimeProvider));
+            Assert.Throws<ArgumentNullException>(() =>
+                TimeSpan.FromSeconds(1).Sleep(nullTimeProvider)
+            );
+
+            // Sleep(timeProvider, ct)
+            Assert.Throws<ArgumentNullException>(() =>
+                TimeSpan.Zero.Sleep(nullTimeProvider, CancellationToken.None)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                TimeSpan.FromSeconds(1).Sleep(nullTimeProvider, CancellationToken.None)
+            );
+
+            // SleepAsync(timeProvider)
+            Assert.Throws<ArgumentNullException>(() => TimeSpan.Zero.SleepAsync(nullTimeProvider));
+            Assert.Throws<ArgumentNullException>(() =>
+                TimeSpan.FromSeconds(1).SleepAsync(nullTimeProvider)
+            );
+
+            // SleepAsync(timeProvider, ct)
+            Assert.Throws<ArgumentNullException>(() =>
+                TimeSpan.Zero.SleepAsync(nullTimeProvider, CancellationToken.None)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                TimeSpan.FromSeconds(1).SleepAsync(nullTimeProvider, CancellationToken.None)
+            );
+        }
     }
 }
