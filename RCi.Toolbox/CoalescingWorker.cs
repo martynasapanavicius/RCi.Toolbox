@@ -121,6 +121,11 @@ namespace RCi.Toolbox
     {
         private readonly record struct State(bool IsScheduled, bool IsExecuting);
 
+        private static readonly SyncBoxWaitForDelegate<State> _isIdlePredicate = x =>
+            !x.IsScheduled && !x.IsExecuting;
+        private static readonly SyncBoxWaitForDelegate<State> _isBusyPredicate = x =>
+            x.IsScheduled || x.IsExecuting;
+
         private readonly AtomicGate _disposed = new();
         private readonly CancellationTokenSource _cts;
         private readonly CancellationToken _ct;
@@ -490,7 +495,7 @@ namespace RCi.Toolbox
 
         private Task<bool> WaitForAsync(bool isBusy, TimeSpan timeout, CancellationToken ct) =>
             _stateBox.WaitForAsync(
-                x => (x.IsScheduled || x.IsExecuting) == isBusy,
+                isBusy ? _isBusyPredicate : _isIdlePredicate,
                 timeout,
                 _timeProvider,
                 ct
@@ -498,7 +503,7 @@ namespace RCi.Toolbox
 
         private bool WaitFor(bool isBusy, TimeSpan timeout, CancellationToken ct) =>
             _stateBox.WaitFor(
-                x => (x.IsScheduled || x.IsExecuting) == isBusy,
+                isBusy ? _isBusyPredicate : _isIdlePredicate,
                 timeout,
                 _timeProvider,
                 ct
