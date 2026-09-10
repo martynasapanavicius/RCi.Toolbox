@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Time.Testing;
 
 namespace RCi.Toolbox.Tests
 {
@@ -301,6 +302,70 @@ namespace RCi.Toolbox.Tests
             Assert.That(success, Is.True);
 
             waiterAllowToEndJob.Set();
+        }
+
+        [Test]
+        public static async Task ScheduleAsync_WithFakeTimeProvider()
+        {
+            var fakeTime = new FakeTimeProvider();
+            var executed = 0;
+            using var worker = new CoalescingWorker(
+                new CoalescingWorkerParameters { TimeProvider = fakeTime },
+                () => Interlocked.Increment(ref executed)
+            );
+
+            // Schedule with 10 second delay
+            var scheduleTask = worker.ScheduleAsync(TimeSpan.FromSeconds(10));
+            Assert.That(scheduleTask.IsCompleted, Is.False);
+            Assert.That(executed, Is.EqualTo(0));
+
+            // Advance time by 5 seconds - still not executed
+            fakeTime.Advance(TimeSpan.FromSeconds(5));
+            Assert.That(scheduleTask.IsCompleted, Is.False);
+            Assert.That(executed, Is.EqualTo(0));
+
+            // Advance time remaining 5 seconds
+            fakeTime.Advance(TimeSpan.FromSeconds(5));
+            var result = await scheduleTask;
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.WasCoalesced, Is.False);
+
+            worker.WaitForIdle();
+            Assert.That(executed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public static async Task ScheduleAsync_WithFakeTimeProvider_Cancelled()
+        {
+            var fakeTime = new FakeTimeProvider();
+            using var cts = new CancellationTokenSource();
+            var executed = 0;
+            using var worker = new CoalescingWorker(
+                new CoalescingWorkerParameters { TimeProvider = fakeTime },
+                () => Interlocked.Increment(ref executed)
+            );
+
+            var scheduleTask = worker.ScheduleAsync(TimeSpan.FromSeconds(10), cts.Token);
+            Assert.That(scheduleTask.IsCompleted, Is.False);
+
+            cts.Cancel();
+
+            var result = await scheduleTask;
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.WasCoalesced, Is.False);
+
+            fakeTime.Advance(TimeSpan.FromSeconds(20));
+            worker.WaitForIdle();
+            Assert.That(executed, Is.EqualTo(0));
+        }
+
+        [Test]
+        public static void Ctor_NullValidation()
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new CoalescingWorker(null!, () => { }));
+            Assert.Throws<ArgumentNullException>(() =>
+                _ = new CoalescingWorker(CoalescingWorkerParameters.Default, null!)
+            );
         }
     }
 }

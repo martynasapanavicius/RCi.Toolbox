@@ -36,18 +36,22 @@ namespace RCi.Toolbox
         bool Schedule(out bool wasCoalesced);
 
         /// <inheritdoc cref="Schedule(out bool)" />
+        /// <remarks>
+        /// Note: This overload synchronously blocks the calling thread during <paramref name="waitBeforeScheduling"/>.
+        /// For non-blocking scheduling with a delay, use <see cref="ScheduleAsync(TimeSpan)"/>.
+        /// </remarks>
         bool Schedule(TimeSpan waitBeforeScheduling, out bool wasCoalesced);
 
-        /// <inheritdoc cref="Schedule(out bool)" />
+        /// <inheritdoc cref="Schedule(TimeSpan, out bool)" />
         bool Schedule(TimeSpan waitBeforeScheduling, CancellationToken ct, out bool wasCoalesced);
 
         /// <inheritdoc cref="Schedule(out bool)" />
         bool Schedule();
 
-        /// <inheritdoc cref="Schedule(out bool)" />
+        /// <inheritdoc cref="Schedule(TimeSpan, out bool)" />
         bool Schedule(TimeSpan waitBeforeScheduling);
 
-        /// <inheritdoc cref="Schedule(out bool)" />
+        /// <inheritdoc cref="Schedule(TimeSpan, out bool)" />
         bool Schedule(TimeSpan waitBeforeScheduling, CancellationToken ct);
 
         //
@@ -101,6 +105,7 @@ namespace RCi.Toolbox
         public bool UseBackgroundThread { get; init; } = true;
         public ThreadPriority ThreadPriority { get; init; } = ThreadPriority.BelowNormal;
         public Action<Exception>? OnJobExceptionCallback { get; init; }
+        public TimeProvider? TimeProvider { get; init; }
     }
 
     public sealed class CoalescingWorker : ICoalescingWorkerDisposable
@@ -114,6 +119,7 @@ namespace RCi.Toolbox
         private readonly Action<Exception>? _onJobExceptionCallback;
         private readonly SyncBox<State> _stateBox; // synchronized state, internals can rely on it
         private readonly JobQueue _jobQueue;
+        private readonly TimeProvider _timeProvider;
 
         private readonly SyncBox<bool> _isBusyBox = new(false); // this box is only for observers
         public event EventHandler<bool>? IsBusyChanged
@@ -124,10 +130,14 @@ namespace RCi.Toolbox
 
         public CoalescingWorker(CoalescingWorkerParameters parameters, Action job)
         {
+            ArgumentNullException.ThrowIfNull(parameters);
+            ArgumentNullException.ThrowIfNull(job);
+
             _cts = new CancellationTokenSource();
             _ct = _cts.Token;
             _job = job;
             _onJobExceptionCallback = parameters.OnJobExceptionCallback;
+            _timeProvider = parameters.TimeProvider ?? TimeProvider.System;
 
             _stateBox = new SyncBox<State>(new State(false, false));
             _stateBox.ValueChanged += StateBoxOnValueChanged;
@@ -284,7 +294,7 @@ namespace RCi.Toolbox
                 return ScheduleInternal(out wasCoalesced);
             }
 
-            if (!waitBeforeScheduling.Sleep(_ct))
+            if (!waitBeforeScheduling.Sleep(_timeProvider, _ct))
             {
                 wasCoalesced = false;
                 return false;
@@ -307,7 +317,7 @@ namespace RCi.Toolbox
             using var ctsMerged = CancellationTokenSource.CreateLinkedTokenSource(_ct, ct);
             var ctMerged = ctsMerged.Token;
 
-            if (!waitBeforeScheduling.Sleep(ctMerged))
+            if (!waitBeforeScheduling.Sleep(_timeProvider, ctMerged))
             {
                 wasCoalesced = false;
                 return false;
@@ -335,7 +345,7 @@ namespace RCi.Toolbox
                 return (success, wasCoalesced);
             }
 
-            if (!await waitBeforeScheduling.SleepAsync(_ct))
+            if (!await waitBeforeScheduling.SleepAsync(_timeProvider, _ct).ConfigureAwait(false))
             {
                 return (false, false);
             }
@@ -364,7 +374,11 @@ namespace RCi.Toolbox
             using var ctsMerged = CancellationTokenSource.CreateLinkedTokenSource(_ct, ct);
             var ctMerged = ctsMerged.Token;
 
-            if (!await waitBeforeScheduling.SleepAsync(ctMerged))
+            if (
+                !await waitBeforeScheduling
+                    .SleepAsync(_timeProvider, ctMerged)
+                    .ConfigureAwait(false)
+            )
             {
                 return (false, false);
             }
