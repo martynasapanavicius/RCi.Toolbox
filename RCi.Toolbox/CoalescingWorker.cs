@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using RCi.Toolbox.Boxes;
@@ -250,6 +250,10 @@ namespace RCi.Toolbox
                         // because job queue rejects jobs only when it is cancelled
                         // and this happens only when it is disposed (or during dispose)
                         // however we ourselves discard new schedules when cancelled
+
+                        // roll back state change if posting to job queue fails,
+                        // preventing stateBox from being permanently stuck in IsScheduled = true.
+                        s(stateBefore);
                         return (false, false);
                     }
 
