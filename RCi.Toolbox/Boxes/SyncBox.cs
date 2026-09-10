@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -46,6 +46,7 @@ namespace RCi.Toolbox.Boxes
 
         public SyncBox(T initValue, Func<T, T, bool> funcEquals)
         {
+            ArgumentNullException.ThrowIfNull(funcEquals);
             _value = initValue;
             _funcEquals = funcEquals;
         }
@@ -57,6 +58,8 @@ namespace RCi.Toolbox.Boxes
 
         public void AccessLocked(SyncBoxReadWriteAccessLockedDelegate<T> action)
         {
+            ArgumentNullException.ThrowIfNull(action);
+
             lock (_lock)
             {
                 action(
@@ -85,6 +88,8 @@ namespace RCi.Toolbox.Boxes
             SyncBoxReadWriteAccessLockedDelegate<T, TResult> action
         )
         {
+            ArgumentNullException.ThrowIfNull(action);
+
             lock (_lock)
             {
                 return action(
@@ -111,6 +116,8 @@ namespace RCi.Toolbox.Boxes
 
         public void AccessLocked(SyncBoxReadOnlyAccessLockedDelegate<T> action)
         {
+            ArgumentNullException.ThrowIfNull(action);
+
             lock (_lock)
             {
                 action(GetUnlocked);
@@ -119,6 +126,8 @@ namespace RCi.Toolbox.Boxes
 
         public TResult AccessLocked<TResult>(SyncBoxReadOnlyAccessLockedDelegate<T, TResult> action)
         {
+            ArgumentNullException.ThrowIfNull(action);
+
             lock (_lock)
             {
                 return action(GetUnlocked);

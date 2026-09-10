@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using RCi.Toolbox.Boxes;
 
@@ -231,6 +231,26 @@ namespace RCi.Toolbox.Tests.Boxes
                 });
             }
             Task.WaitAll(tasks);
+        }
+
+        [Test]
+        public static void NullValidation()
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new SyncBox<int>(123, null!));
+
+            var box = new SyncBox<int>(123);
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadWriteAccessLockedDelegate<int>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadWriteAccessLockedDelegate<int, int>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadOnlyAccessLockedDelegate<int>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadOnlyAccessLockedDelegate<int, int>)null!)
+            );
         }
     }
 }
