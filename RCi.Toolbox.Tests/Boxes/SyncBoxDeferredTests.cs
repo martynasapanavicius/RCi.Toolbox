@@ -464,5 +464,25 @@ namespace RCi.Toolbox.Tests.Boxes
                 "DisposeAsync inside ValueChanged deadlocked"
             );
         }
+
+        [Test]
+        public static void NullValidation()
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new SyncBoxDeferred<int>(123, null!));
+
+            using var box = new SyncBoxDeferred<int>(123);
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadWriteAccessLockedDelegate<int>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadWriteAccessLockedDelegate<int, int>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadOnlyAccessLockedDelegate<int>)null!)
+            );
+            Assert.Throws<ArgumentNullException>(() =>
+                box.AccessLocked((SyncBoxReadOnlyAccessLockedDelegate<int, int>)null!)
+            );
+        }
     }
 }
