@@ -624,6 +624,10 @@ namespace RCi.Toolbox
 
                 try
                 {
+                    if (timeout < TimeSpan.Zero)
+                    {
+                        timeout = Timeout.InfiniteTimeSpan;
+                    }
                     if (!waiter.Wait(timeout, ct))
                     {
                         result = new JobResult(ct.IsCancellationRequested, new TimeoutException());
@@ -768,6 +772,11 @@ namespace RCi.Toolbox
                     return new JobResult<T>(true, null, default);
                 }
 
+                if (timeout < TimeSpan.Zero)
+                {
+                    timeout = Timeout.InfiniteTimeSpan;
+                }
+
                 if (timeout != Timeout.InfiniteTimeSpan && ct.CanBeCanceled)
                 {
                     try
@@ -860,6 +869,11 @@ namespace RCi.Toolbox
                 if (!enqueued)
                 {
                     return new JobResult(true, null);
+                }
+
+                if (timeout < TimeSpan.Zero)
+                {
+                    timeout = Timeout.InfiniteTimeSpan;
                 }
 
                 if (timeout != Timeout.InfiniteTimeSpan && ct.CanBeCanceled)
