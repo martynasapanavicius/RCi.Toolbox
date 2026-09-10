@@ -22,6 +22,7 @@ namespace RCi.Toolbox.Boxes
         private readonly Channel<T> _eventChannel;
         private Task? _pumpTask;
         private bool _isDisposed;
+        private int _dispatchingThreadId;
 
         /// <summary>
         /// Event handler to receive notifications when value was changed.
@@ -98,7 +99,14 @@ namespace RCi.Toolbox.Boxes
                 taskToWait = _pumpTask;
             }
 
-            taskToWait?.Wait();
+            // avoid self-deadlock if Dispose() is called from within a ValueChanged callback on the pump thread
+            if (
+                _dispatchingThreadId != Environment.CurrentManagedThreadId
+                && (!Task.CurrentId.HasValue || taskToWait?.Id != Task.CurrentId.Value)
+            )
+            {
+                taskToWait?.Wait();
+            }
         }
 
         public async ValueTask DisposeAsync()
@@ -113,8 +121,13 @@ namespace RCi.Toolbox.Boxes
                 taskToWait = _pumpTask;
             }
 
-            // asynchronously wait for the pump to finish processing the remaining items
-            if (taskToWait is not null)
+            // asynchronously wait for the pump to finish processing the remaining items,
+            // avoiding self-deadlock if called from within a ValueChanged callback
+            if (
+                taskToWait is not null
+                && _dispatchingThreadId != Environment.CurrentManagedThreadId
+                && (!Task.CurrentId.HasValue || taskToWait.Id != Task.CurrentId.Value)
+            )
             {
                 await taskToWait.ConfigureAwait(false);
             }
@@ -238,11 +251,16 @@ namespace RCi.Toolbox.Boxes
                     try
                     {
                         // dispatch sequentially outside the lock
+                        _dispatchingThreadId = Environment.CurrentManagedThreadId;
                         ValueChanged?.Invoke(this, value);
                     }
                     catch
                     {
                         // ignore issues with customers, keep pumping the queue
+                    }
+                    finally
+                    {
+                        _dispatchingThreadId = 0;
                     }
                 }
             }

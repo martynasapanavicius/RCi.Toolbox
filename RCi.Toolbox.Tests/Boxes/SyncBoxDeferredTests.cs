@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -417,5 +417,52 @@ namespace RCi.Toolbox.Tests.Boxes
         //    var result = await waitTask;
         //    Assert.True(result, "Should return true because value was updated before timeout.");
         //}
+
+        [Test]
+        public static void Dispose_InsideValueChanged_DoesNotDeadlock()
+        {
+            var box = new SyncBoxDeferred<int>(0);
+            using var disposedEvent = new ManualResetEventSlim(false);
+
+            box.ValueChanged += (_, val) =>
+            {
+                if (val == 1)
+                {
+                    box.Dispose();
+                    disposedEvent.Set();
+                }
+            };
+
+            box.Value = 1;
+            Assert.That(
+                disposedEvent.Wait(TimeSpan.FromSeconds(2)),
+                Is.True,
+                "Dispose inside ValueChanged deadlocked"
+            );
+        }
+
+        [Test]
+        public static async Task DisposeAsync_InsideValueChanged_DoesNotDeadlock()
+        {
+            var box = new SyncBoxDeferred<int>(0);
+            var tcs = new TaskCompletionSource<bool>();
+
+            box.ValueChanged += async (_, val) =>
+            {
+                if (val == 1)
+                {
+                    await box.DisposeAsync();
+                    tcs.TrySetResult(true);
+                }
+            };
+
+            box.Value = 1;
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+            Assert.That(
+                completedTask,
+                Is.EqualTo(tcs.Task),
+                "DisposeAsync inside ValueChanged deadlocked"
+            );
+        }
     }
 }
