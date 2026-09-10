@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -469,15 +469,16 @@ namespace RCi.Toolbox
                 // check if there are idle workers
                 if (_idleWorkerIds.TryDequeue(out var idleWorkerId))
                 {
+                    // signal worker before updating sync-boxes so that even if a subscriber's synchronous
+                    // event handler throws, the dequeued worker is guaranteed to be unblocked and not stranded
+                    _synchronizers[idleWorkerId].Set();
+
                     // notify observers via sync-boxes (we just took one idle worker from the queue)
                     // the synchronous one fires its event immediately inline
                     // the deferred one simply pushes the value to its channel and returns instantly
                     var activeWorkerCount = WorkerCount - _idleWorkerIds.Count;
                     _activeWorkerCountBox.Value = activeWorkerCount;
                     _activeWorkerCountBoxDeferred.Value = activeWorkerCount;
-
-                    // notify worker (will start executing enqueued jobs)
-                    _synchronizers[idleWorkerId].Set();
                 }
             }
 
