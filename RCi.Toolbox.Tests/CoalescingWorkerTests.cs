@@ -360,6 +360,70 @@ namespace RCi.Toolbox.Tests
         }
 
         [Test]
+        public static async Task WaitForIdleAsync_WithFakeTimeProvider_Timeout()
+        {
+            var fakeTime = new FakeTimeProvider();
+            using var jobStarted = new ManualResetEventSlim(false);
+            using var allowJobToComplete = new ManualResetEventSlim(false);
+
+            using var worker = new CoalescingWorker(
+                new CoalescingWorkerParameters { TimeProvider = fakeTime },
+                () =>
+                {
+                    jobStarted.Set();
+                    allowJobToComplete.Wait();
+                }
+            );
+
+            worker.Schedule();
+            jobStarted.Wait();
+
+            var waitTask = worker.WaitForIdleAsync(TimeSpan.FromSeconds(10));
+            Assert.That(waitTask.IsCompleted, Is.False);
+
+            fakeTime.Advance(TimeSpan.FromSeconds(5));
+            Assert.That(waitTask.IsCompleted, Is.False);
+
+            fakeTime.Advance(TimeSpan.FromSeconds(5));
+            var result = await waitTask;
+            Assert.That(result, Is.False);
+
+            allowJobToComplete.Set();
+            worker.WaitForIdle();
+        }
+
+        [Test]
+        public static async Task WaitForIdle_WithFakeTimeProvider_Timeout()
+        {
+            var fakeTime = new FakeTimeProvider();
+            using var jobStarted = new ManualResetEventSlim(false);
+            using var allowJobToComplete = new ManualResetEventSlim(false);
+
+            using var worker = new CoalescingWorker(
+                new CoalescingWorkerParameters { TimeProvider = fakeTime },
+                () =>
+                {
+                    jobStarted.Set();
+                    allowJobToComplete.Wait();
+                }
+            );
+
+            worker.Schedule();
+            jobStarted.Wait();
+
+            var waitTask = Task.Run(() => worker.WaitForIdle(TimeSpan.FromSeconds(10)));
+            await Task.Delay(10); // allow thread to enter wait
+            Assert.That(waitTask.IsCompleted, Is.False);
+
+            fakeTime.Advance(TimeSpan.FromSeconds(10));
+            var result = await waitTask;
+            Assert.That(result, Is.False);
+
+            allowJobToComplete.Set();
+            worker.WaitForIdle();
+        }
+
+        [Test]
         public static void Ctor_NullValidation()
         {
             Assert.Throws<ArgumentNullException>(() => _ = new CoalescingWorker(null!, () => { }));

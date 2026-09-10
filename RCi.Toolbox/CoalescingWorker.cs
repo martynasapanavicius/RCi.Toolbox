@@ -461,10 +461,20 @@ namespace RCi.Toolbox
         //
 
         private Task<bool> WaitForAsync(bool isBusy, TimeSpan timeout, CancellationToken ct) =>
-            _stateBox.WaitForAsync(x => (x.IsScheduled || x.IsExecuting) == isBusy, timeout, ct);
+            _stateBox.WaitForAsync(
+                x => (x.IsScheduled || x.IsExecuting) == isBusy,
+                timeout,
+                _timeProvider,
+                ct
+            );
 
         private bool WaitFor(bool isBusy, TimeSpan timeout, CancellationToken ct) =>
-            _stateBox.WaitFor(x => (x.IsScheduled || x.IsExecuting) == isBusy, timeout, ct);
+            _stateBox.WaitFor(
+                x => (x.IsScheduled || x.IsExecuting) == isBusy,
+                timeout,
+                _timeProvider,
+                ct
+            );
 
         //
 
