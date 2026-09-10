@@ -409,7 +409,10 @@ namespace RCi.Toolbox.Collections
             var size = _size;
             if (size > 0)
             {
-                Array.Clear(_items, 0, size);
+                if (_clearOnReturn || RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                {
+                    Array.Clear(_items, 0, size);
+                }
             }
             _size = 0;
         }
@@ -510,6 +513,8 @@ namespace RCi.Toolbox.Collections
         /// </summary>
         public void AddRange(IEnumerable<T> collection)
         {
+            ArgumentNullException.ThrowIfNull(collection);
+
             if (collection is ICollection<T> c)
             {
                 var count = c.Count;
