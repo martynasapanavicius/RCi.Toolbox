@@ -627,5 +627,48 @@ namespace RCi.Toolbox.Tests
 
             jobQueue.WaitForIdle();
         }
+
+        [Test]
+        public static void Dispose_FromWorkerThread_ThrowsInvalidOperationException()
+        {
+            var jobQueue = new JobQueue();
+
+            try
+            {
+                using var done = new ManualResetEvent(false);
+                Exception? caughtException = null;
+
+                jobQueue.Post(() =>
+                {
+                    try
+                    {
+                        jobQueue.Dispose();
+                    }
+                    catch (Exception e)
+                    {
+                        caughtException = e;
+                    }
+                    finally
+                    {
+                        done.Set();
+                    }
+                });
+
+                Assert.That(
+                    done.WaitOne(TimeSpan.FromSeconds(2)),
+                    Is.True,
+                    "Worker thread deadlocked during Dispose"
+                );
+                Assert.That(caughtException, Is.TypeOf<InvalidOperationException>());
+                Assert.That(
+                    caughtException.Message,
+                    Is.EqualTo("cannot dispose job queue from within a worker thread")
+                );
+            }
+            finally
+            {
+                jobQueue.Dispose();
+            }
+        }
     }
 }

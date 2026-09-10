@@ -290,6 +290,13 @@ namespace RCi.Toolbox
 
         public void Dispose()
         {
+            if (Array.IndexOf(_workers, Thread.CurrentThread) >= 0)
+            {
+                throw new InvalidOperationException(
+                    "cannot dispose job queue from within a worker thread"
+                );
+            }
+
             // ensure cancelled, thus we won't enqueue new jobs
             Cancel();
 
