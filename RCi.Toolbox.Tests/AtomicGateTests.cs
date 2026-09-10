@@ -1,4 +1,5 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RCi.Toolbox.Tests
@@ -116,6 +117,56 @@ namespace RCi.Toolbox.Tests
             // only one task had to be allowed to enter and exit the scope
             Assert.That(counter, Is.EqualTo(1));
             Assert.That(gate.State, Is.EqualTo(AtomicGateState.Sealed));
+        }
+
+        [Test]
+        public static void TryExecute_NullArgument_ThrowsAndDoesNotSeal()
+        {
+            var gate = new AtomicGate();
+            Assert.Throws<ArgumentNullException>(() => gate.TryExecute(null!));
+            Assert.That(gate.State, Is.EqualTo(AtomicGateState.Ready));
+
+            // Ensure gate is still functional
+            var executed = false;
+            var success = gate.TryExecute(() => executed = true);
+            Assert.That(success, Is.True);
+            Assert.That(executed, Is.True);
+            Assert.That(gate.State, Is.EqualTo(AtomicGateState.Sealed));
+        }
+
+        [Test]
+        public static async Task TryExecuteTaskAsync()
+        {
+            var gate = new AtomicGate();
+            var executed = false;
+            var success = await gate.TryExecuteTaskAsync(async () =>
+            {
+                await Task.Yield();
+                executed = true;
+            });
+
+            Assert.That(success, Is.True);
+            Assert.That(executed, Is.True);
+            Assert.That(gate.State, Is.EqualTo(AtomicGateState.Sealed));
+
+            // Subsequent attempts fail fast
+            var secondSuccess = await gate.TryExecuteTaskAsync(async () => await Task.Yield());
+            Assert.That(secondSuccess, Is.False);
+        }
+
+        [Test]
+        public static void TryExecuteAsync_NullArgument_ThrowsAndDoesNotSeal()
+        {
+            var gate = new AtomicGate();
+            Assert.Throws<ArgumentNullException>(() =>
+            {
+                _ = gate.TryExecuteAsync(null!);
+            });
+            Assert.Throws<ArgumentNullException>(() =>
+            {
+                _ = gate.TryExecuteTaskAsync(null!);
+            });
+            Assert.That(gate.State, Is.EqualTo(AtomicGateState.Ready));
         }
     }
 }

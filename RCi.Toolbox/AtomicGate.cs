@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,16 +32,17 @@ namespace RCi.Toolbox
     /// </summary>
     public sealed class AtomicGate
     {
-        private const long READY = 0;
-        private const long EXECUTING = 1;
-        private const long SEALED = 2;
+        private const int READY = 0;
+        private const int EXECUTING = 1;
+        private const int SEALED = 2;
 
-        private long _state;
+        private int _state;
 
         /// <summary>
-        /// Gets the current state of the gate.
+        /// Gets the current state of the gate. This is a "point-in-time" snapshot
+        /// and should not be used for synchronization logic.
         /// </summary>
-        public AtomicGateState State => (AtomicGateState)Interlocked.Read(ref _state);
+        public AtomicGateState State => (AtomicGateState)Volatile.Read(ref _state);
 
         /// <summary>
         /// Tries to acquire the lock and enter the gate.
@@ -109,6 +110,8 @@ namespace RCi.Toolbox
         /// <returns><see langword="true"/> if this thread successfully acquired the gate and executed the job; otherwise <see langword="false"/>.</returns>
         public bool TryExecute(Action job, out AtomicGateState currentState)
         {
+            ArgumentNullException.ThrowIfNull(job);
+
             var success = false;
             try
             {
@@ -149,34 +152,65 @@ namespace RCi.Toolbox
         /// </summary>
         /// <param name="job">The user's asynchronous code to execute.</param>
         /// <returns><see langword="true"/> if this thread successfully acquired the gate and executed the job; otherwise <see langword="false"/>.</returns>
-        public async ValueTask<bool> TryExecuteAsync(Func<ValueTask> job)
+        public ValueTask<bool> TryExecuteAsync(Func<ValueTask> job)
         {
-            var success = false;
-            try
+            ArgumentNullException.ThrowIfNull(job);
+
+            if (!TryEnter())
             {
-                // try to acquire lock and enter the scope
-                if (!TryEnter())
-                {
-                    return false;
-                }
-
-                success = true;
-
-                // execute user's code
-                // NOTE: we don't care if user's code throws exceptions,
-                // finally block will handle resources properly and seal the gate
-                await job();
-
-                return true;
+                return ValueTask.FromResult(false);
             }
-            finally
+
+            return ExecuteCoreAsync(job);
+
+            async ValueTask<bool> ExecuteCoreAsync(Func<ValueTask> j)
             {
-                // release the lock
-                if (success)
+                try
+                {
+                    await j().ConfigureAwait(false);
+                    return true;
+                }
+                finally
                 {
                     if (!TryExit(out var currentState))
                     {
                         // this shouldn't be possible
+                        throw new InvalidOperationException(
+                            "failed to exit scope, current state: " + currentState
+                        );
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously attempts to execute the provided Task-returning job if the gate is in a <see cref="AtomicGateState.Ready"/> state.
+        /// Regardless of whether the job succeeds or throws an exception, the gate will be permanently sealed afterward.
+        /// </summary>
+        /// <param name="job">The user's asynchronous code to execute.</param>
+        /// <returns><see langword="true"/> if this thread successfully acquired the gate and executed the job; otherwise <see langword="false"/>.</returns>
+        public ValueTask<bool> TryExecuteTaskAsync(Func<Task> job)
+        {
+            ArgumentNullException.ThrowIfNull(job);
+
+            if (!TryEnter())
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            return ExecuteCoreAsync(job);
+
+            async ValueTask<bool> ExecuteCoreAsync(Func<Task> j)
+            {
+                try
+                {
+                    await j().ConfigureAwait(false);
+                    return true;
+                }
+                finally
+                {
+                    if (!TryExit(out var currentState))
+                    {
                         throw new InvalidOperationException(
                             "failed to exit scope, current state: " + currentState
                         );
