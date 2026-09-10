@@ -291,7 +291,8 @@ namespace RCi.Toolbox.Tests
 
             using var worker = new CoalescingWorker(() =>
             {
-                Assert.That(waiterAllowToEndJob.WaitOne(TimeSpan.FromSeconds(10)), Is.True);
+                var waitOneSuccess = waiterAllowToEndJob.WaitOne(TimeSpan.FromSeconds(10));
+                Assert.That(waitOneSuccess, Is.True);
             });
 
             var waitForBusyTask = worker.WaitForBusyAsync(TimeSpan.FromMilliseconds(1000));
