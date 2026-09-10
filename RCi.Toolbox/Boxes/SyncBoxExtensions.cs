@@ -195,12 +195,19 @@ namespace RCi.Toolbox.Boxes
                 {
                     // create a token that cancels when the TimeProvider reaches the timeout
                     timeoutCts = new CancellationTokenSource(timeout, timeProvider);
-                    // link it with the user's token so either one can abort the wait
-                    linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        ct,
-                        timeoutCts.Token
-                    );
-                    waitToken = linkedCts.Token;
+                    if (ct.CanBeCanceled)
+                    {
+                        // link it with the user's token so either one can abort the wait
+                        linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                            ct,
+                            timeoutCts.Token
+                        );
+                        waitToken = linkedCts.Token;
+                    }
+                    else
+                    {
+                        waitToken = timeoutCts.Token;
+                    }
                 }
 
                 try
