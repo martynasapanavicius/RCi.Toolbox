@@ -8,13 +8,18 @@ namespace RCi.Toolbox
         private readonly long _startTimestamp;
         private readonly TimeProvider? _timeProvider;
 
-        // IMPROVEMENT: Allows callers to verify if the struct has been initialized without throwing an exception.
         public bool IsActive => _startTimestamp != 0L;
 
-        private ValueStopwatch(long startTimestamp, TimeProvider? timeProvider = null)
+        private ValueStopwatch(long startTimestamp, TimeProvider timeProvider)
         {
             _startTimestamp = startTimestamp;
             _timeProvider = timeProvider;
+        }
+
+        private ValueStopwatch(long startTimestamp)
+        {
+            _startTimestamp = startTimestamp;
+            _timeProvider = null;
         }
 
         /// <see cref="Stopwatch.StartNew"/>
@@ -46,6 +51,6 @@ namespace RCi.Toolbox
             _startTimestamp == 0L
                 ? throw new InvalidOperationException("uninitialized")
                 : _timeProvider?.GetElapsedTime(_startTimestamp)
-                    ?? Stopwatch.GetElapsedTime(_startTimestamp, Stopwatch.GetTimestamp());
+                    ?? Stopwatch.GetElapsedTime(_startTimestamp);
     }
 }
