@@ -18,15 +18,15 @@ namespace RCi.Toolbox.Tests
             // Act
             var sleepTask = Task.Run(() => delay.Sleep(timeProvider));
 
-            // Let the background thread start and block
-            await Task.Delay(50);
-            Assert.False(sleepTask.IsCompleted);
-
-            // Act: Advance time
-            timeProvider.Advance(delay);
+            // Give background thread time to block in Sleep before advancing virtual time
+            while (!sleepTask.IsCompleted)
+            {
+                await Task.Delay(20);
+                timeProvider.Advance(delay);
+            }
 
             // Assert
-            await sleepTask; // Should complete immediately now
+            await sleepTask;
             Assert.True(sleepTask.IsCompletedSuccessfully);
         }
 

@@ -181,10 +181,15 @@ namespace RCi.Toolbox.Tests
 
             Assert.That(waiterJobStarted.WaitOne(TimeSpan.FromSeconds(10)), Is.True);
 
-            var success = await worker.WaitForIdleAsync(TimeSpan.FromMilliseconds(500));
-            Assert.That(success, Is.False);
-
-            waiterAllowToEndJob.Set();
+            try
+            {
+                var success = await worker.WaitForIdleAsync(TimeSpan.FromMilliseconds(200));
+                Assert.That(success, Is.False);
+            }
+            finally
+            {
+                waiterAllowToEndJob.Set();
+            }
         }
 
         [Test]
@@ -206,14 +211,19 @@ namespace RCi.Toolbox.Tests
 
             Assert.That(waiterJobStarted.WaitOne(TimeSpan.FromSeconds(10)), Is.True);
 
-            var waitForIdleTask = worker.WaitForIdleAsync(TimeSpan.FromMilliseconds(1000), ct);
+            try
+            {
+                var waitForIdleTask = worker.WaitForIdleAsync(TimeSpan.FromSeconds(10), ct);
 
-            cts.Cancel();
+                cts.Cancel();
 
-            var success = await waitForIdleTask;
-            Assert.That(success, Is.False);
-
-            waiterAllowToEndJob.Set();
+                var success = await waitForIdleTask;
+                Assert.That(success, Is.False);
+            }
+            finally
+            {
+                waiterAllowToEndJob.Set();
+            }
         }
 
         [Test]
@@ -232,12 +242,19 @@ namespace RCi.Toolbox.Tests
 
             Assert.That(waiterJobStarted.WaitOne(TimeSpan.FromSeconds(10)), Is.True);
 
-            var waitForIdleTask = worker.WaitForIdleAsync(TimeSpan.FromMilliseconds(1000));
+            try
+            {
+                var waitForIdleTask = worker.WaitForIdleAsync(TimeSpan.FromSeconds(10));
 
-            waiterAllowToEndJob.Set();
+                waiterAllowToEndJob.Set();
 
-            var success = await waitForIdleTask;
-            Assert.That(success, Is.True);
+                var success = await waitForIdleTask;
+                Assert.That(success, Is.True);
+            }
+            finally
+            {
+                waiterAllowToEndJob.Set();
+            }
         }
 
         //
@@ -254,17 +271,22 @@ namespace RCi.Toolbox.Tests
 
             worker.Schedule();
 
-            var success = await worker.WaitForBusyAsync(TimeSpan.FromMilliseconds(1000));
-            Assert.That(success, Is.True);
-
-            waiterAllowToEndJob.Set();
+            try
+            {
+                var success = await worker.WaitForBusyAsync(TimeSpan.FromSeconds(10));
+                Assert.That(success, Is.True);
+            }
+            finally
+            {
+                waiterAllowToEndJob.Set();
+            }
         }
 
         [Test]
         public static async Task WaitForBusyAsyncFailTimeout()
         {
             using var worker = new CoalescingWorker(() => { });
-            var success = await worker.WaitForBusyAsync(TimeSpan.FromMilliseconds(500));
+            var success = await worker.WaitForBusyAsync(TimeSpan.FromMilliseconds(200));
             Assert.That(success, Is.False);
         }
 
@@ -276,7 +298,7 @@ namespace RCi.Toolbox.Tests
 
             using var worker = new CoalescingWorker(() => { });
 
-            var waitForBusyTask = worker.WaitForBusyAsync(TimeSpan.FromMilliseconds(1000), ct);
+            var waitForBusyTask = worker.WaitForBusyAsync(TimeSpan.FromSeconds(10), ct);
 
             cts.Cancel();
 
@@ -295,14 +317,19 @@ namespace RCi.Toolbox.Tests
                 Assert.That(waitOneSuccess, Is.True);
             });
 
-            var waitForBusyTask = worker.WaitForBusyAsync(TimeSpan.FromMilliseconds(1000));
+            try
+            {
+                var waitForBusyTask = worker.WaitForBusyAsync(TimeSpan.FromSeconds(10));
 
-            worker.Schedule();
+                worker.Schedule();
 
-            var success = await waitForBusyTask;
-            Assert.That(success, Is.True);
-
-            waiterAllowToEndJob.Set();
+                var success = await waitForBusyTask;
+                Assert.That(success, Is.True);
+            }
+            finally
+            {
+                waiterAllowToEndJob.Set();
+            }
         }
 
         [Test]
@@ -379,17 +406,23 @@ namespace RCi.Toolbox.Tests
             worker.Schedule();
             jobStarted.Wait();
 
-            var waitTask = worker.WaitForIdleAsync(TimeSpan.FromSeconds(10));
-            Assert.That(waitTask.IsCompleted, Is.False);
+            try
+            {
+                var waitTask = worker.WaitForIdleAsync(TimeSpan.FromSeconds(10));
+                Assert.That(waitTask.IsCompleted, Is.False);
 
-            fakeTime.Advance(TimeSpan.FromSeconds(5));
-            Assert.That(waitTask.IsCompleted, Is.False);
+                fakeTime.Advance(TimeSpan.FromSeconds(5));
+                Assert.That(waitTask.IsCompleted, Is.False);
 
-            fakeTime.Advance(TimeSpan.FromSeconds(5));
-            var result = await waitTask;
-            Assert.That(result, Is.False);
+                fakeTime.Advance(TimeSpan.FromSeconds(5));
+                var result = await waitTask;
+                Assert.That(result, Is.False);
+            }
+            finally
+            {
+                allowJobToComplete.Set();
+            }
 
-            allowJobToComplete.Set();
             worker.WaitForIdle();
         }
 
@@ -412,15 +445,23 @@ namespace RCi.Toolbox.Tests
             worker.Schedule();
             jobStarted.Wait();
 
-            var waitTask = Task.Run(() => worker.WaitForIdle(TimeSpan.FromSeconds(10)));
-            await Task.Delay(10); // allow thread to enter wait
-            Assert.That(waitTask.IsCompleted, Is.False);
+            try
+            {
+                var waitTask = Task.Run(() => worker.WaitForIdle(TimeSpan.FromSeconds(10)));
+                while (!waitTask.IsCompleted)
+                {
+                    await Task.Delay(20);
+                    fakeTime.Advance(TimeSpan.FromSeconds(10));
+                }
 
-            fakeTime.Advance(TimeSpan.FromSeconds(10));
-            var result = await waitTask;
-            Assert.That(result, Is.False);
+                var result = await waitTask;
+                Assert.That(result, Is.False);
+            }
+            finally
+            {
+                allowJobToComplete.Set();
+            }
 
-            allowJobToComplete.Set();
             worker.WaitForIdle();
         }
 

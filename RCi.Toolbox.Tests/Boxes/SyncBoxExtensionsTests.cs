@@ -208,15 +208,11 @@ namespace RCi.Toolbox.Tests.Boxes
                 box.WaitFor(v => v == 5, timeout, fakeTime, CancellationToken.None)
             );
 
-            // Keep advancing virtual time until the task completes.
-            // This guarantees we eventually cross the token's scheduled cancellation time,
-            // regardless of exactly when the thread pool started the task.
+            // Give the background thread time to enter WaitFor and register its timer before advancing virtual time
             while (!waitTask.IsCompleted)
             {
+                await Task.Delay(20);
                 fakeTime.Advance(timeout);
-
-                // Briefly yield the main thread so the thread pool can process the task
-                await Task.Yield();
             }
 
             var result = await waitTask;
