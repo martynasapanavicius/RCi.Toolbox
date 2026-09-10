@@ -392,7 +392,10 @@ namespace RCi.Toolbox.Tests.Boxes
             var waitTask = Task.Run(() =>
             {
                 box.WaitFor(
-                    v => v == 5 ? throw new InvalidOperationException("predicate failed in wait") : false,
+                    v =>
+                        v == 5
+                            ? throw new InvalidOperationException("predicate failed in wait")
+                            : false,
                     TimeSpan.FromMinutes(1),
                     fakeTime,
                     CancellationToken.None
