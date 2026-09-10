@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -100,18 +101,28 @@ namespace RCi.Toolbox.Boxes
 
                 void OnValueChanged(object? sender, T value)
                 {
-                    if (!isDone(value))
+                    try
                     {
-                        // not yet in our wanted state
-                        return;
+                        if (!isDone(value))
+                        {
+                            // not yet in our wanted state
+                            return;
+                        }
+
+                        // unhook early to prevent unnecessary subsequent checks if the value keeps changing rapidly
+                        box.ValueChanged -= OnValueChanged;
+
+                        // TrySetResult safely completes the task
+                        // if the task already timed out or was canceled, this simply returns false and does nothing
+                        tcs.TrySetResult(true);
                     }
-
-                    // unhook early to prevent unnecessary subsequent checks if the value keeps changing rapidly
-                    box.ValueChanged -= OnValueChanged;
-
-                    // TrySetResult safely completes the task
-                    // if the task already timed out or was canceled, this simply returns false and does nothing
-                    tcs.TrySetResult(true);
+                    catch (Exception e)
+                    {
+                        // if the predicate throws, unhook and fault the task immediately rather than causing
+                        // the waiter to hang until timeout or crashing the producer thread
+                        box.ValueChanged -= OnValueChanged;
+                        tcs.TrySetException(e);
+                    }
                 }
             }
 
@@ -141,11 +152,9 @@ namespace RCi.Toolbox.Boxes
                     timeout = Timeout.InfiniteTimeSpan;
                 }
 
-                // waiter will be created if needed,
-                // to avoid compiler warnings about variables modified in outer scope,
-                // let's create a box (array of one element) to wrap actual object
-                var waiterBox = new ManualResetEventSlim?[1];
+                ManualResetEventSlim? waiter = null;
                 var waiterLock = new Lock();
+                Exception? predicateException = null;
 
                 var alreadyDone = box.AccessLocked(get =>
                 {
@@ -157,7 +166,7 @@ namespace RCi.Toolbox.Boxes
                     }
 
                     // create waiter
-                    waiterBox[0] = new ManualResetEventSlim(false);
+                    waiter = new ManualResetEventSlim(false);
 
                     // hook
                     box.ValueChanged += OnValueChanged;
@@ -198,7 +207,14 @@ namespace RCi.Toolbox.Boxes
                 {
                     // tell the OS to wait "forever", relying entirely on
                     // our waitToken to wake us up if the event isn't fired
-                    waiterBox[0]!.Wait(Timeout.InfiniteTimeSpan, waitToken);
+                    waiter!.Wait(Timeout.InfiniteTimeSpan, waitToken);
+
+                    // if the predicate threw an exception, rethrow it to the waiting caller
+                    if (predicateException is not null)
+                    {
+                        ExceptionDispatchInfo.Capture(predicateException).Throw();
+                    }
+
                     return true;
                 }
                 catch (OperationCanceledException)
@@ -216,30 +232,37 @@ namespace RCi.Toolbox.Boxes
                     lock (waiterLock)
                     {
                         box.ValueChanged -= OnValueChanged;
-                        waiterBox[0]!.Dispose();
-                        waiterBox[0] = null;
+                        waiter!.Dispose();
+                        waiter = null;
                     }
                 }
 
                 void OnValueChanged(object? sender, T value)
                 {
-                    if (!isDone(value))
+                    Exception? ex = null;
+                    var done = false;
+
+                    try
                     {
-                        // not yet in our wanted state
+                        done = isDone(value);
+                    }
+                    catch (Exception e)
+                    {
+                        ex = e;
+                    }
+
+                    // fast path: if not done and no exception, exit immediately without touching the lock!
+                    if (!done && ex is null)
+                    {
                         return;
                     }
 
                     lock (waiterLock)
                     {
-                        // (waiter could be either healthy or null, but never disposed,
-                        // because we're accessing/modifying it in a synchronized context)
-                        var waiter = waiterBox[0];
                         if (waiter is not null)
                         {
-                            // unhook
+                            predicateException = ex;
                             box.ValueChanged -= OnValueChanged;
-
-                            // signal waiter
                             waiter.Set();
                         }
                     }

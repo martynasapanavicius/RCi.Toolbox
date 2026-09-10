@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -351,6 +351,59 @@ namespace RCi.Toolbox.Tests.Boxes
                 Has.All.True,
                 "All 50 concurrent blocking waiters should wake up and return true."
             );
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public static void WaitForAsync_PredicateThrows_FaultsWaitingTask(bool useDeferred)
+        {
+            ISyncBox<int> box = useDeferred ? new SyncBoxDeferred<int>(0) : new SyncBox<int>(0);
+            var fakeTime = new FakeTimeProvider();
+
+            var waitTask = box.WaitForAsync(
+                v => v == 5 ? throw new InvalidOperationException("predicate failed") : false,
+                TimeSpan.FromMinutes(1),
+                fakeTime,
+                CancellationToken.None
+            );
+
+            // Mutate value to trigger predicate exception
+            if (!useDeferred)
+            {
+                // For SyncBox, the writer will not crash and the waiter task will be faulted
+                box.Value = 5;
+            }
+            else
+            {
+                box.Value = 5;
+            }
+
+            var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await waitTask);
+            Assert.That(ex.Message, Is.EqualTo("predicate failed"));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public static void WaitFor_PredicateThrows_RethrowsToCaller(bool useDeferred)
+        {
+            ISyncBox<int> box = useDeferred ? new SyncBoxDeferred<int>(0) : new SyncBox<int>(0);
+            var fakeTime = new FakeTimeProvider();
+
+            var waitTask = Task.Run(() =>
+            {
+                box.WaitFor(
+                    v => v == 5 ? throw new InvalidOperationException("predicate failed in wait") : false,
+                    TimeSpan.FromMinutes(1),
+                    fakeTime,
+                    CancellationToken.None
+                );
+            });
+
+            Thread.Sleep(50);
+            box.Value = 5;
+
+            var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await waitTask);
+            Assert.That(ex.Message, Is.EqualTo("predicate failed in wait"));
         }
     }
 }
