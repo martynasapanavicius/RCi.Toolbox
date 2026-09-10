@@ -496,5 +496,42 @@ namespace RCi.Toolbox.Tests
             asyncResult = await worker.ScheduleAsync(TimeSpan.FromMilliseconds(5), cts.Token);
             Assert.That(asyncResult.Success, Is.False);
         }
+
+        [Test]
+        public static async Task Schedule_CancellationTokenOnly_Overloads()
+        {
+            var executed = 0;
+            ICoalescingWorker worker = new CoalescingWorker(() =>
+                Interlocked.Increment(ref executed)
+            );
+
+            using var ctsCancelled = new CancellationTokenSource();
+            ctsCancelled.Cancel();
+
+            // Pre-cancelled token rejected
+            Assert.That(worker.Schedule(ctsCancelled.Token, out var wasCoalesced), Is.False);
+            Assert.That(wasCoalesced, Is.False);
+            Assert.That(worker.Schedule(ctsCancelled.Token), Is.False);
+
+            var asyncResult = await worker.ScheduleAsync(ctsCancelled.Token);
+            Assert.That(asyncResult.Success, Is.False);
+            Assert.That(asyncResult.WasCoalesced, Is.False);
+
+            // Valid token schedules immediately
+            Assert.That(worker.Schedule(CancellationToken.None, out wasCoalesced), Is.True);
+            Assert.That(wasCoalesced, Is.False);
+            worker.WaitForIdle();
+            Assert.That(executed, Is.EqualTo(1));
+
+            Assert.That(worker.Schedule(CancellationToken.None), Is.True);
+            worker.WaitForIdle();
+            Assert.That(executed, Is.EqualTo(2));
+
+            asyncResult = await worker.ScheduleAsync(CancellationToken.None);
+            Assert.That(asyncResult.Success, Is.True);
+            Assert.That(asyncResult.WasCoalesced, Is.False);
+            worker.WaitForIdle();
+            Assert.That(executed, Is.EqualTo(3));
+        }
     }
 }

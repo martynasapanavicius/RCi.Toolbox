@@ -36,6 +36,9 @@ namespace RCi.Toolbox
         bool Schedule(out bool wasCoalesced);
 
         /// <inheritdoc cref="Schedule(out bool)" />
+        bool Schedule(CancellationToken ct, out bool wasCoalesced);
+
+        /// <inheritdoc cref="Schedule(out bool)" />
         /// <remarks>
         /// Note: This overload synchronously blocks the calling thread during <paramref name="waitBeforeScheduling"/>.
         /// For non-blocking scheduling with a delay, use <see cref="ScheduleAsync(TimeSpan)"/>.
@@ -47,6 +50,9 @@ namespace RCi.Toolbox
 
         /// <inheritdoc cref="Schedule(out bool)" />
         bool Schedule();
+
+        /// <inheritdoc cref="Schedule(out bool)" />
+        bool Schedule(CancellationToken ct);
 
         /// <inheritdoc cref="Schedule(TimeSpan, out bool)" />
         bool Schedule(TimeSpan waitBeforeScheduling);
@@ -64,6 +70,9 @@ namespace RCi.Toolbox
         /// and <c>WasCoalesced</c> indicates if it was merged into a pending job.
         /// </returns>
         Task<(bool Success, bool WasCoalesced)> ScheduleAsync();
+
+        /// <inheritdoc cref="Schedule(out bool)" />
+        Task<(bool Success, bool WasCoalesced)> ScheduleAsync(CancellationToken ct);
 
         /// <inheritdoc cref="Schedule(out bool)" />
         Task<(bool Success, bool WasCoalesced)> ScheduleAsync(TimeSpan waitBeforeScheduling);
@@ -353,6 +362,14 @@ namespace RCi.Toolbox
             return Task.FromResult((success, wasCoalesced));
         }
 
+        private Task<(bool Success, bool WasCoalesced)> ScheduleInternalWithCancellationTokenAsync(
+            CancellationToken ct
+        )
+        {
+            var success = ScheduleInternalWithCancellationToken(ct, out var wasCoalesced);
+            return Task.FromResult((success, wasCoalesced));
+        }
+
         private async Task<(bool Success, bool WasCoalesced)> ScheduleInternalAsync(
             TimeSpan waitBeforeScheduling
         )
@@ -430,6 +447,9 @@ namespace RCi.Toolbox
 
         public bool Schedule(out bool wasCoalesced) => ScheduleInternal(out wasCoalesced);
 
+        public bool Schedule(CancellationToken ct, out bool wasCoalesced) =>
+            ScheduleInternalWithCancellationToken(ct, out wasCoalesced);
+
         public bool Schedule(TimeSpan waitBeforeScheduling, out bool wasCoalesced) =>
             ScheduleInternal(waitBeforeScheduling, out wasCoalesced);
 
@@ -441,6 +461,9 @@ namespace RCi.Toolbox
 
         public bool Schedule() => ScheduleInternal(out _);
 
+        public bool Schedule(CancellationToken ct) =>
+            ScheduleInternalWithCancellationToken(ct, out _);
+
         public bool Schedule(TimeSpan waitBeforeScheduling) =>
             ScheduleInternal(waitBeforeScheduling, out _);
 
@@ -448,6 +471,9 @@ namespace RCi.Toolbox
             ScheduleInternalWithCancellationToken(waitBeforeScheduling, ct, out _);
 
         public Task<(bool Success, bool WasCoalesced)> ScheduleAsync() => ScheduleInternalAsync();
+
+        public Task<(bool Success, bool WasCoalesced)> ScheduleAsync(CancellationToken ct) =>
+            ScheduleInternalWithCancellationTokenAsync(ct);
 
         public Task<(bool Success, bool WasCoalesced)> ScheduleAsync(
             TimeSpan waitBeforeScheduling
