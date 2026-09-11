@@ -210,7 +210,8 @@ namespace RCi.Toolbox.Collections
                     case IReadOnlyCollection<T> readOnlyCollection:
                         {
                             var length = readOnlyCollection.Count;
-                            _items = pool.Rent(length);
+                            var items = pool.Rent(length);
+                            _items = items;
                             _size = length;
                             if (length > 0)
                             {
@@ -218,7 +219,7 @@ namespace RCi.Toolbox.Collections
                                 {
                                     for (var i = 0; i < length; i++)
                                     {
-                                        _items[i] = readOnlyList[i];
+                                        items[i] = readOnlyList[i];
                                     }
                                 }
                                 else
@@ -226,7 +227,7 @@ namespace RCi.Toolbox.Collections
                                     var i = 0;
                                     foreach (var item in readOnlyCollection)
                                     {
-                                        _items[i++] = item;
+                                        items[i++] = item;
                                     }
                                 }
                             }
@@ -433,11 +434,13 @@ namespace RCi.Toolbox.Collections
                 if (value != _items.Length)
                 {
                     var newItems = _pool.Rent(value);
-                    if (_size > 0)
+                    var items = _items;
+                    var size = _size;
+                    if (size > 0)
                     {
-                        Array.Copy(_items, newItems, _size);
+                        Array.Copy(items, newItems, size);
                     }
-                    _pool.Return(_items, _clearOnReturn);
+                    _pool.Return(items, _clearOnReturn);
                     _items = newItems;
                 }
             }
@@ -621,35 +624,40 @@ namespace RCi.Toolbox.Collections
 
         public void Insert(int index, T item)
         {
-            if ((uint)index > (uint)_size)
+            var size = _size;
+            if ((uint)index > (uint)size)
             {
                 throw new ArgumentOutOfRangeException(nameof(index));
             }
-            if (_size == _items.Length)
+            if (size == _items.Length)
             {
-                Grow(_size + 1);
+                Grow(size + 1);
             }
-            if (index < _size)
+            var items = _items;
+            if (index < size)
             {
-                Array.Copy(_items, index, _items, index + 1, _size - index);
+                Array.Copy(items, index, items, index + 1, size - index);
             }
-            _items[index] = item;
-            _size++;
+            items[index] = item;
+            _size = size + 1;
             _version++;
         }
 
         public void RemoveAt(int index)
         {
-            if ((uint)index >= (uint)_size)
+            var size = _size;
+            if ((uint)index >= (uint)size)
             {
                 throw new ArgumentOutOfRangeException(nameof(index));
             }
-            _size--;
-            if (index < _size)
+            size--;
+            _size = size;
+            var items = _items;
+            if (index < size)
             {
-                Array.Copy(_items, index + 1, _items, index, _size - index);
+                Array.Copy(items, index + 1, items, index, size - index);
             }
-            _items[_size] = default!;
+            items[size] = default!;
             _version++;
         }
 
@@ -701,13 +709,14 @@ namespace RCi.Toolbox.Collections
                 );
             }
 
-            if (_items.Length - _size < count)
+            var size = _size;
+            if (_items.Length - size < count)
             {
-                Grow(checked(_size + count));
+                Grow(checked(size + count));
             }
 
-            span.CopyTo(_items.AsSpan(_size, count));
-            _size += count;
+            span.CopyTo(_items.AsSpan(size, count));
+            _size = size + count;
             _version++;
         }
 
@@ -747,12 +756,12 @@ namespace RCi.Toolbox.Collections
                         var count = _size;
                         if (count > 0)
                         {
-                            if (_items.Length - _size < count)
+                            if (_items.Length - count < count)
                             {
-                                Grow(checked(_size + count));
+                                Grow(checked(count + count));
                             }
-                            Array.Copy(_items, 0, _items, _size, count);
-                            _size += count;
+                            Array.Copy(_items, 0, _items, count, count);
+                            _size = count + count;
                             _version++;
                         }
                     }
@@ -767,12 +776,13 @@ namespace RCi.Toolbox.Collections
                         var count = c.Count;
                         if (count > 0)
                         {
-                            if (_items.Length - _size < count)
+                            var size = _size;
+                            if (_items.Length - size < count)
                             {
-                                Grow(checked(_size + count));
+                                Grow(checked(size + count));
                             }
-                            c.CopyTo(_items, _size);
-                            _size += count;
+                            c.CopyTo(_items, size);
+                            _size = size + count;
                             _version++;
                         }
                     }
@@ -783,15 +793,17 @@ namespace RCi.Toolbox.Collections
                         var count = readOnlyCollection.Count;
                         if (count > 0)
                         {
-                            if (_items.Length - _size < count)
+                            var size = _size;
+                            if (_items.Length - size < count)
                             {
-                                Grow(checked(_size + count));
+                                Grow(checked(size + count));
                             }
+                            var items = _items;
                             if (readOnlyCollection is IReadOnlyList<T> readOnlyList)
                             {
                                 for (var i = 0; i < count; i++)
                                 {
-                                    _items[_size + i] = readOnlyList[i];
+                                    items[size + i] = readOnlyList[i];
                                 }
                             }
                             else
@@ -799,10 +811,10 @@ namespace RCi.Toolbox.Collections
                                 var i = 0;
                                 foreach (var item in readOnlyCollection)
                                 {
-                                    _items[_size + i++] = item;
+                                    items[size + i++] = item;
                                 }
                             }
-                            _size += count;
+                            _size = size + count;
                             _version++;
                         }
                     }
@@ -813,12 +825,13 @@ namespace RCi.Toolbox.Collections
                         var count = nonGenericCollection.Count;
                         if (count > 0)
                         {
-                            if (_items.Length - _size < count)
+                            var size = _size;
+                            if (_items.Length - size < count)
                             {
-                                Grow(checked(_size + count));
+                                Grow(checked(size + count));
                             }
-                            nonGenericCollection.CopyTo(_items, _size);
-                            _size += count;
+                            nonGenericCollection.CopyTo(_items, size);
+                            _size = size + count;
                             _version++;
                         }
                     }
@@ -830,17 +843,15 @@ namespace RCi.Toolbox.Collections
                         && nonEnumCount > 0
                     )
                     {
-                        if (_items.Length - _size < nonEnumCount)
+                        var size = _size;
+                        if (_items.Length - size < nonEnumCount)
                         {
-                            Grow(checked(_size + nonEnumCount));
+                            Grow(checked(size + nonEnumCount));
                         }
                     }
-                    using (var en = collection.GetEnumerator())
+                    foreach (var item in collection)
                     {
-                        while (en.MoveNext())
-                        {
-                            Add(en.Current);
-                        }
+                        Add(item);
                     }
                     break;
             }

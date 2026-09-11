@@ -190,14 +190,15 @@ namespace RCi.Toolbox.Collections
                         {
                             var length = readOnlyCollection.Count;
                             Length = length;
-                            _array = pool.Rent(length);
+                            var array = pool.Rent(length);
+                            _array = array;
                             if (length > 0)
                             {
                                 if (readOnlyCollection is IReadOnlyList<T> readOnlyList)
                                 {
                                     for (var i = 0; i < length; i++)
                                     {
-                                        _array[i] = readOnlyList[i];
+                                        array[i] = readOnlyList[i];
                                     }
                                 }
                                 else
@@ -205,7 +206,7 @@ namespace RCi.Toolbox.Collections
                                     var i = 0;
                                     foreach (var item in readOnlyCollection)
                                     {
-                                        _array[i++] = item;
+                                        array[i++] = item;
                                     }
                                 }
                             }
@@ -232,13 +233,14 @@ namespace RCi.Toolbox.Collections
                             )
                             {
                                 Length = nonEnumCount;
-                                _array = pool.Rent(nonEnumCount);
+                                var array = pool.Rent(nonEnumCount);
+                                _array = array;
                                 if (nonEnumCount > 0)
                                 {
                                     var i = 0;
                                     foreach (var item in items)
                                     {
-                                        _array[i++] = item;
+                                        array[i++] = item;
                                     }
                                 }
                             }
