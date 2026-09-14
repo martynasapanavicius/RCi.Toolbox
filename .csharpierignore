@@ -1,0 +1,6 @@
+.idea/
+.vs/
+TestResults/
+artifacts/
+**/bin/
+**/obj/
