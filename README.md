@@ -1,5 +1,6 @@
 # RCi.Toolbox
 
+[![CI](https://github.com/martynasapanavicius/RCi.Toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/martynasapanavicius/RCi.Toolbox/actions/workflows/ci.yml)
 [![NuGet Version](https://img.shields.io/nuget/v/RCi.Toolbox.svg)](https://www.nuget.org/packages/RCi.Toolbox/)
 [![Target Framework](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
